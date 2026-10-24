@@ -18,7 +18,8 @@ constexpr wchar_t kDefaultIni[] =
     L"\r\n"
     L"[net]\r\n"
     L"enabled=1\r\n"
-    L"; steam = play with a Steam friend; udp = tests on this PC only (cdmp_peer.exe)\r\n"
+    L"; steam = play with a Steam friend; relay = anyone with the room code ([relay]);\r\n"
+    L"; udp = tests on this PC only (cdmp_peer.exe)\r\n"
     L"transport=udp\r\n"
     L"; guest connects to the host or to cdmp_peer; host waits for one player\r\n"
     L"role=guest\r\n"
@@ -31,6 +32,13 @@ constexpr wchar_t kDefaultIni[] =
     L"; Guest: the host's SteamID64 (empty = the only friend playing Crimson Desert)\r\n"
     L"; Host: accept only this friend (empty = any friend playing)\r\n"
     L"peer_steamid=\r\n"
+    L"\r\n"
+    L"[relay]\r\n"
+    L"; transport=relay: address of the relay, host:port\r\n"
+    L"server=\r\n"
+    L"; Host: leave empty and a room code is made (written in cdmp.log); give it to your friend.\r\n"
+    L"; Guest: the host's room code.\r\n"
+    L"room=\r\n"
     L"\r\n"
     L"[overlay]\r\n"
     L"; 0 turns off the in-game overlay completely (no graphics hooks)\r\n"
@@ -120,7 +128,11 @@ Config load_config(const std::wstring& ini_path) {
     c.peer_host = narrow(read_string(ini_path, L"net", L"peer_host", c.peer_host));
     c.peer_port = static_cast<uint16_t>(read_uint(ini_path, L"net", L"peer_port", c.peer_port));
     c.send_rate_hz = std::clamp(read_uint(ini_path, L"net", L"send_rate_hz", c.send_rate_hz), 1u, 60u);
-    c.net_transport_steam = read_string(ini_path, L"net", L"transport", "udp") == L"steam";
+    const auto transport = read_string(ini_path, L"net", L"transport", "udp");
+    c.net_transport_steam = transport == L"steam";
+    c.net_transport_relay = transport == L"relay";
+    c.relay_server = narrow(read_string(ini_path, L"relay", L"server", ""));
+    c.relay_room = narrow(read_string(ini_path, L"relay", L"room", ""));
     c.net_role_host = read_string(ini_path, L"net", L"role", "guest") == L"host";
     c.steam_peer_id = _wcstoui64(read_string(ini_path, L"steam", L"peer_steamid", "").c_str(), nullptr, 10);
     c.steam_channel = static_cast<int>(read_uint(ini_path, L"steam", L"channel", 67));

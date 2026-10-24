@@ -59,10 +59,13 @@ add_library(cdmp_common STATIC
     src/common/client_session.cpp
     src/common/reliable.cpp
     src/common/enemy_load.cpp
+    src/common/room_code.cpp
+    src/common/relay.cpp
+    src/common/relay_transport.cpp
 )
 cdmp_strict(cdmp_common)
 target_include_directories(cdmp_common PUBLIC src)
-target_link_libraries(cdmp_common PUBLIC ws2_32)
+target_link_libraries(cdmp_common PUBLIC ws2_32 bcrypt)
 
 # The mod: cdmp.asi, loaded by Ultimate ASI Loader inside the game.
 # The build id the two players compare when they connect: the first 8 hex
@@ -128,6 +131,11 @@ target_link_options(cdmp_mod PRIVATE "/PDBALTPATH:cdmp.pdb")
 add_executable(cdmp_peer tools/peer_sim/main.cpp)
 cdmp_strict(cdmp_peer)
 target_link_libraries(cdmp_peer PRIVATE cdmp_common)
+
+# Relay for transport=relay (room codes); runs on a server, not in the game.
+add_executable(cdmp_relay tools/relay/main.cpp)
+cdmp_strict(cdmp_relay)
+target_link_libraries(cdmp_relay PRIVATE cdmp_common)
 
 add_executable(cdmp_host tools/host/main.cpp)
 cdmp_strict(cdmp_host)

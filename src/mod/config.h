@@ -18,6 +18,11 @@ struct Config {
     // [net] transport=udp|steam, role=guest|host. A guest connects to the host
     // (or to cdmp_peer); a host waits for one player.
     bool net_transport_steam = false;
+    // [relay] transport=relay: join a room through cdmp_relay with a room code
+    // instead of being Steam friends. A host with an empty room makes one.
+    bool net_transport_relay = false;
+    std::string relay_server;  // host:port of cdmp_relay
+    std::string relay_room;    // XXXX-XXXX-XXXX-XXXX
     bool net_role_host = false;
     // [steam] peer_steamid: guest = the host's SteamID64 (0 = the only friend
     // playing); host = accept only this friend (0 = any friend playing).

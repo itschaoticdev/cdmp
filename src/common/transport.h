@@ -1,7 +1,8 @@
 #pragma once
 // Datagram transport behind the session: plain UDP (development on one PC,
-// or a friend over a VPN / open port) or Steam networking (no port
-// forwarding; src/mod/net/steam_transport.h). Datagrams are at most
+// or a friend over a VPN / open port), Steam networking (no port
+// forwarding; src/mod/net/steam_transport.h) or a relay with a room code
+// (anyone with the code; src/common/relay_transport.h). Datagrams are at most
 // proto::kMaxPacketSize bytes, unreliable and unordered on both.
 
 #include <cstddef>
@@ -16,14 +17,15 @@ namespace cdmp::net {
 
 // Address of the other player, whatever the transport. Never a memory address.
 struct PeerAddr {
-    enum class Kind : uint8_t { None, Udp, Steam };
+    enum class Kind : uint8_t { None, Udp, Steam, Relay };
     Kind kind = Kind::None;
-    uint64_t value = 0;  // Udp: ip (network order) << 16 | port   Steam: SteamID64
+    uint64_t value = 0;  // Udp: ip (network order) << 16 | port   Steam: SteamID64   Relay: 0 (the other player in the room)
 
     static PeerAddr udp(const Endpoint& ep) {
         return {Kind::Udp, (static_cast<uint64_t>(ep.ip) << 16) | ep.port};
     }
     static PeerAddr steam(uint64_t steam_id) { return {Kind::Steam, steam_id}; }
+    static PeerAddr relay() { return {Kind::Relay, 0}; }
     Endpoint endpoint() const {
         return {static_cast<uint32_t>(value >> 16), static_cast<uint16_t>(value & 0xFFFF)};
     }
@@ -31,6 +33,7 @@ struct PeerAddr {
     std::string str() const {
         if (kind == Kind::Udp) return "udp:" + endpoint().str();
         if (kind == Kind::Steam) return "steam:" + std::to_string(value);
+        if (kind == Kind::Relay) return "relay:room";
         return "none";
     }
     bool operator==(const PeerAddr&) const = default;

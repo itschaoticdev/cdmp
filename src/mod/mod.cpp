@@ -3,12 +3,15 @@
 #include <cmath>
 #include <exception>
 #include <memory>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "build_id.h"
 #include "common/client_session.h"
 #include "common/clock.h"
+#include "common/relay_transport.h"
+#include "common/room_code.h"
 #include "common/transport.h"
 #include "common/udp.h"
 #include "mod/config.h"
@@ -196,6 +199,7 @@ void run_network(const Config& cfg, LocalSource& local) {
     const bool host = cfg.net_role_host;
     std::unique_ptr<net::Transport> transport;
     net::SteamTransport* steam = nullptr;
+    net::RelayTransport* relay = nullptr;
     std::optional<net::PeerAddr> peer;
     if (cfg.net_transport_steam) {
         if (!local.in_game()) {
@@ -210,6 +214,44 @@ void run_network(const Config& cfg, LocalSource& local) {
             peer = net::PeerAddr::steam(cfg.steam_peer_id);
             steam->set_peer(cfg.steam_peer_id);
         }
+    } else if (cfg.net_transport_relay) {
+        // Anyone with the room code, through cdmp_relay. The code keys the
+        // encryption and the relay only forwards, so like Steam it hides the
+        // IPs and nobody without the code can talk to us.
+        std::string code;
+        if (auto c = net::normalize_room_code(cfg.relay_room)) {
+            code = *c;
+        } else if (host && cfg.relay_room.empty()) {
+            code = net::generate_room_code();
+            log::info("Network: your room code is {} - give it to your friend", net::format_room_code(code));
+        } else {
+            log::error("Network: [relay] room '{}' is not a room code (XXXX-XXXX-XXXX-XXXX)", cfg.relay_room);
+            net::cleanup();
+            return;
+        }
+        std::string server_host = cfg.relay_server;
+        uint16_t server_port = 37020;
+        if (const auto colon = server_host.rfind(':'); colon != std::string::npos) {
+            server_port = static_cast<uint16_t>(std::strtoul(server_host.c_str() + colon + 1, nullptr, 10));
+            server_host.resize(colon);
+        }
+        const auto relay_ep = server_host.empty() ? std::nullopt : net::Endpoint::resolve(server_host, server_port);
+        if (!relay_ep) {
+            log::error("Network: cannot resolve the relay '{}'; set [relay] server=host:port", cfg.relay_server);
+            net::cleanup();
+            return;
+        }
+        auto rt = std::make_unique<net::RelayTransport>();
+        if (!rt->open(*relay_ep, code, host)) {
+            log::error("Network: cannot open the relay transport: {}", net::UdpSocket::last_error());
+            net::cleanup();
+            return;
+        }
+        relay = rt.get();
+        transport = std::move(rt);
+        // There is only one other player in a room: the guest knows whom to
+        // talk to; the host still locks on at the first Hello.
+        if (!host) peer = net::PeerAddr::relay();
     } else {
         // UDP is only for tests on one PC (cdmp_peer, cdmp_host): it never
         // leaves this computer. Between players only Steam is used: it hides
@@ -257,8 +299,8 @@ void run_network(const Config& cfg, LocalSource& local) {
     if (cfg.coop_enabled && local.in_game()) {
         coop = std::make_unique<net::CoopLink>(session, cfg.coop_delay_ms, cfg.coop_offset_m,
                                                cfg.coop_map_pin);
-        // A real other player (Steam): each side only takes what the other role sends.
-        coop->set_strict_roles(steam != nullptr);
+        // A real other player (Steam or relay): each side only takes what the other role sends.
+        coop->set_strict_roles(steam != nullptr || relay != nullptr);
     }
 
     const uint32_t state_interval = 1000 / cfg.send_rate_hz;
@@ -721,7 +763,7 @@ DWORD WINAPI worker(LPVOID) {
         // says how their game was set up.
         log::info("Config: net {} {} | coop delay {} ms, offset {:.2f} m, horse {}, equip {}, damage mirror {}, "
                   "map pin {}, minimap icon {:#x}, enemies target copy {}, guest hits {}, stagger {}, player react {} lethal {}",
-                  cfg.net_transport_steam ? "steam" : "udp", cfg.net_role_host ? "host" : "guest", cfg.coop_delay_ms,
+                  cfg.net_transport_steam ? "steam" : cfg.net_transport_relay ? "relay" : "udp", cfg.net_role_host ? "host" : "guest", cfg.coop_delay_ms,
                   cfg.coop_offset_m, cfg.coop_horse, cfg.coop_equip, cfg.coop_damage, cfg.coop_map_pin,
                   cfg.coop_minimap_icon, cfg.coop_enemies_target_copy, cfg.coop_guest_hits, cfg.coop_guest_hit_stagger,
                   cfg.coop_player_hit_react, cfg.coop_player_hit_lethal);
