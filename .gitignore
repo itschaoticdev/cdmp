@@ -20,3 +20,10 @@ dist/
 captures/
 cdmp_packets_*
 cdmp_learnt.txt
+
+# launcher
+launcher/bin/
+launcher/obj/
+launcher.tests/bin/
+launcher.tests/obj/
+dist/

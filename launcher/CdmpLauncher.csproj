@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CDMP-Launcher</AssemblyName>
+    <RootNamespace>Cdmp.Launcher</RootNamespace>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <Version>0.3.0</Version>
+    <Company>Crimson Desert Multiplayer</Company>
+    <Product>Crimson Desert Multiplayer Launcher</Product>
+    <Description>Unofficial co-op mod launcher for Crimson Desert</Description>
+    <Copyright>GPL-3.0. Not affiliated with Pearl Abyss.</Copyright>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- one exe for players: no .NET install needed -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- what the launcher installs into the game's bin64 folder -->
+    <EmbeddedResource Include="..\dist\cdmp.asi" LogicalName="payload.cdmp.asi" />
+    <EmbeddedResource Include="..\third_party\ultimate-asi-loader\v9.7.4\dinput8.dll" LogicalName="payload.winmm.dll" />
+    <EmbeddedResource Include="..\kit\public\cdmp.ini.anfitrion" LogicalName="template.host.ini" />
+    <EmbeddedResource Include="..\kit\public\cdmp.ini.invitado" LogicalName="template.guest.ini" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CdmpLauncher.Tests" />
+  </ItemGroup>
+
+</Project>
