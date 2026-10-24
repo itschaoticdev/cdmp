@@ -121,6 +121,19 @@ void RelayCore::on_datagram(const Endpoint& from, std::span<const uint8_t> bytes
     }
 }
 
+void RelayCore::set_slot(Room& room, bool host_slot, const Endpoint& ep, uint32_t now_ms) {
+    Slot& self = host_slot ? room.host : room.guest;
+    if (self.used) {
+        room_of_.erase(key_of(self.ep));
+        if (host_slot && --hosted_per_ip_[self.ep.ip] <= 0) hosted_per_ip_.erase(self.ep.ip);
+    }
+    self.ep = ep;
+    self.used = true;
+    self.last_ms = now_ms;
+    room_of_[key_of(ep)] = key_of(room.id);
+    if (host_slot) ++hosted_per_ip_[ep.ip];
+}
+
 void RelayCore::join(const Endpoint& from, const RoomId& id, Role role, uint32_t now_ms,
                      std::vector<Out>& out) {
     auto reply = [&](Status st, bool peer) {
@@ -128,42 +141,56 @@ void RelayCore::join(const Endpoint& from, const RoomId& id, Role role, uint32_t
         out.push_back({from, encode(Type::JoinAck, id, body)});
     };
     const uint64_t key = key_of(id);
+    const bool want_host = role == Role::Host;
 
-    // One room per endpoint: joining another leaves the old one.
-    if (auto r = room_of_.find(key_of(from)); r != room_of_.end() && r->second != key) leave(from, out);
+    // One place per endpoint: joining another room, or the other place in
+    // this one, leaves the old place first.
+    if (auto r = room_of_.find(key_of(from)); r != room_of_.end()) {
+        const Room& cur = rooms_.at(r->second);
+        const bool holds_host = cur.host.used && cur.host.ep == from;
+        if (r->second != key || holds_host != want_host) leave(from, out);
+    }
 
     auto it = rooms_.find(key);
     if (it == rooms_.end()) {
-        if (role == Role::Guest) {
+        if (!want_host) {
             reply(Status::NoHost, false);
             return;
         }
-        if (rooms_.size() >= kMaxRooms) {
+        auto hosted = hosted_per_ip_.find(from.ip);
+        if (rooms_.size() >= kMaxRooms || (hosted != hosted_per_ip_.end() && hosted->second >= kMaxHostedPerIp)) {
             reply(Status::Busy, false);
             return;
         }
         it = rooms_.emplace(key, Room{id, {}, {}}).first;
     }
     Room& room = it->second;
-    Slot& self = role == Role::Host ? room.host : room.guest;
-    Slot& other = role == Role::Host ? room.guest : room.host;
+    Slot& self = want_host ? room.host : room.guest;
+    Slot& other = want_host ? room.guest : room.host;
 
-    if (role == Role::Guest && !room.host.used) {
+    if (!want_host && !room.host.used) {
         reply(Status::NoHost, false);
         return;
     }
-    if (self.used && !(self.ep == from) && now_ms - self.last_ms < kSlotTimeoutMs) {
-        reply(role == Role::Host ? Status::RoomTaken : Status::RoomFull, other.used);
+    if (self.used && self.ep == from) {
+        self.last_ms = now_ms;  // keep-alive
+        reply(Status::Ok, other.used);
         return;
     }
-    const bool is_new = !self.used || !(self.ep == from);
-    if (self.used && !(self.ep == from)) room_of_.erase(key_of(self.ep));
-    self.ep = from;
-    self.used = true;
-    self.last_ms = now_ms;
-    room_of_[key_of(from)] = key;
+    if (self.used && now_ms - self.last_ms < kSlotTimeoutMs) {
+        reply(want_host ? Status::RoomTaken : Status::RoomFull, other.used);
+        return;
+    }
+    if (want_host && !self.used) {
+        auto hosted = hosted_per_ip_.find(from.ip);
+        if (hosted != hosted_per_ip_.end() && hosted->second >= kMaxHostedPerIp) {
+            reply(Status::Busy, other.used);
+            return;
+        }
+    }
+    set_slot(room, want_host, from, now_ms);
     reply(Status::Ok, other.used);
-    if (is_new && other.used) {
+    if (other.used) {
         const uint8_t present = 1;
         out.push_back({other.ep, encode(Type::Peer, id, {&present, 1})});
     }
@@ -173,6 +200,7 @@ void RelayCore::free_slot(Room& room, bool host_slot, std::vector<Out>& out) {
     Slot& self = host_slot ? room.host : room.guest;
     Slot& other = host_slot ? room.guest : room.host;
     room_of_.erase(key_of(self.ep));
+    if (host_slot && --hosted_per_ip_[self.ep.ip] <= 0) hosted_per_ip_.erase(self.ep.ip);
     self = Slot{};
     if (other.used) {
         const uint8_t present = 0;

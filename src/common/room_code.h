@@ -33,13 +33,18 @@ struct RoomSecrets {
 };
 RoomSecrets derive_room_secrets(const std::string& canonical);
 
-// AES-256-GCM between the two players. Each side seals with its own
-// direction and opens the other's; the nonce is direction + a counter that
-// travels in clear, and a sliding window rejects replays.
+// AES-256-GCM between the two players. The room key alone is never used to
+// encrypt: the counter restarts with every launch and a code can be used
+// twice, which with one key would repeat GCM nonces (plaintext leak and
+// forgeries). So each side picks a random 64-bit session at init and seals
+// with SHA-256(label + room key + direction + session); the session and the
+// counter travel in clear and a sliding window rejects replays. A peer
+// that restarts shows up with a new session; sessions already left behind
+// are refused, so old traffic cannot drag us back.
 class RoomCipher {
 public:
     enum class Direction : uint8_t { HostToGuest = 1, GuestToHost = 2 };
-    static constexpr size_t kOverhead = 8 + 16;  // counter + tag
+    static constexpr size_t kOverhead = 8 + 8 + 16;  // session + counter + tag
 
     RoomCipher() = default;
     ~RoomCipher();
@@ -48,6 +53,7 @@ public:
 
     bool init(const RoomSecrets& secrets, Direction mine);
     bool ready() const { return key_ != nullptr; }
+    uint64_t session() const { return send_session_; }
 
     // Appends counter | ciphertext | tag to out.
     bool seal(std::span<const uint8_t> plain, std::vector<uint8_t>& out);
@@ -56,14 +62,24 @@ public:
     std::optional<size_t> open(std::span<const uint8_t> sealed, std::span<uint8_t> plain_out);
 
 private:
-    bool accept_counter(uint64_t counter);
+    struct Window {
+        uint64_t highest = 0;
+        uint64_t bits = 0;  // bit i = counter (highest - i) seen
+    };
+    static bool accept_counter(Window& w, uint64_t counter);
+    void* make_key(Direction dir, uint64_t session) const;  // BCRYPT_KEY_HANDLE or null
 
-    void* key_ = nullptr;  // BCRYPT_KEY_HANDLE
+    RoomKeyBytes room_key_{};
     RoomId room_id_{};
     Direction mine_ = Direction::HostToGuest;
+    void* key_ = nullptr;  // ours: sealing
+    uint64_t send_session_ = 0;
     uint64_t send_counter_ = 0;
-    uint64_t recv_highest_ = 0;
-    uint64_t recv_window_ = 0;  // bit i = counter (recv_highest_ - i) seen
+    void* peer_key_ = nullptr;  // the other side's current session: opening
+    uint64_t peer_session_ = 0;
+    Window window_;
+    std::array<uint64_t, 8> old_sessions_{};  // peer sessions we moved away from
+    size_t old_next_ = 0;
 };
 
 }  // namespace cdmp::net

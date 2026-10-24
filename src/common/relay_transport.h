@@ -14,6 +14,11 @@ namespace cdmp::net {
 
 class RelayTransport final : public Transport {
 public:
+    RelayTransport() = default;
+    ~RelayTransport() override { leave(); }  // frees our place now, not after the relay's timeout
+    RelayTransport(const RelayTransport&) = delete;
+    RelayTransport& operator=(const RelayTransport&) = delete;
+
     // code: canonical room code (normalize_room_code). host: we hold the room.
     bool open(const Endpoint& relay, const std::string& code, bool host);
 

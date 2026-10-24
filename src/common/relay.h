@@ -71,6 +71,7 @@ public:
 
     static constexpr uint32_t kSlotTimeoutMs = 15000;
     static constexpr size_t kMaxRooms = 4096;
+    static constexpr int kMaxHostedPerIp = 8;  // one address cannot take every room
     static constexpr double kPacketsPerSecond = 400;  // ~20 Hz state + reliable bursts
     static constexpr double kBurst = 800;             // a Spawn is up to ~220 fragments at once
 
@@ -104,10 +105,12 @@ private:
     void join(const Endpoint& from, const RoomId& id, Role role, uint32_t now_ms, std::vector<Out>& out);
     void leave(const Endpoint& from, std::vector<Out>& out);
     void free_slot(Room& room, bool host_slot, std::vector<Out>& out);
+    void set_slot(Room& room, bool host_slot, const Endpoint& ep, uint32_t now_ms);
 
     std::unordered_map<uint64_t, Room> rooms_;
     std::unordered_map<uint64_t, uint64_t> room_of_;  // endpoint -> room
     std::unordered_map<uint64_t, Bucket> buckets_;
+    std::unordered_map<uint32_t, int> hosted_per_ip_;
     Stats stats_;
 };
 

@@ -21,6 +21,10 @@
 #include "common/pattern.h"
 #include "common/protocol.h"
 #include "common/reliable.h"
+#include "common/relay.h"
+#include "common/relay_transport.h"
+#include "common/room_code.h"
+#include "common/udp.h"
 
 using namespace cdmp;
 
@@ -1326,6 +1330,8 @@ void test_enemy_zone_machine() {
     }
 }
 
+#include "relay_tests.inc"
+
 }  // namespace
 
 int main() {
@@ -1342,6 +1348,10 @@ int main() {
     test_reliable_order_and_streams();
     test_reliable_budget();
     test_versions();
+    test_room_code();
+    test_room_cipher();
+    test_relay_core();
+    test_relay_transport_loopback();
     test_session_game_data();
     test_clock_mapper();
     test_equip_state();

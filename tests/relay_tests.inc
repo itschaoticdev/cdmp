@@ -60,6 +60,29 @@ void test_room_cipher() {
     CHECK(guest.open(batch[10], plain));   // 59 behind
     CHECK(!guest.open(batch[10], plain));
     CHECK(!guest.open(batch[2], plain));   // 67 behind: too old
+    // The other side restarts with the same code: a new session, so no nonce
+    // is ever repeated under one key; we follow it, and refuse the old one.
+    CHECK(host.session() != guest.session());
+    std::vector<uint8_t> old_session;
+    guest.seal(msg, old_session);
+    CHECK(host.open(old_session, plain));
+    net::RoomCipher guest2;
+    CHECK(guest2.init(secrets, D::GuestToHost) && guest2.session() != guest.session());
+    std::vector<uint8_t> fresh1, fresh2, stale;
+    guest2.seal(msg, fresh1);  // counter 1 again, but another session
+    CHECK(host.open(fresh1, plain));
+    guest.seal(msg, stale);    // the old session, new counter
+    CHECK(!host.open(stale, plain));
+    guest2.seal(msg, fresh2);
+    CHECK(host.open(fresh2, plain));
+    // A forged datagram with a made-up session does not move us off the real one.
+    std::vector<uint8_t> forged = fresh2;
+    forged[0] ^= 1;
+    CHECK(!host.open(forged, plain));
+    std::vector<uint8_t> fresh3;
+    guest2.seal(msg, fresh3);
+    CHECK(host.open(fresh3, plain));
+
     // Too big for the output buffer, or truncated.
     std::vector<uint8_t> tiny(2);
     std::vector<uint8_t> s4;
@@ -141,6 +164,32 @@ void test_relay_core() {
     core.on_datagram(x, r::encode_join(room, r::Role::Guest), t, out);
     CHECK(!out.empty() && status_of(out[0]) == int(r::Status::Ok));
     out.clear();
+    // The host asking for the guest place in its own room leaves the host place
+    // (one place per endpoint), so the room empties instead of holding it twice.
+    {
+        r::RelayCore c2;
+        std::vector<r::RelayCore::Out> o2;
+        c2.on_datagram(h, r::encode_join(room, r::Role::Host), t, o2);
+        o2.clear();
+        c2.on_datagram(h, r::encode_join(room, r::Role::Guest), t, o2);
+        CHECK(c2.rooms() == 0 && o2.size() == 1 && status_of(o2[0]) == int(r::Status::NoHost));
+    }
+    // One address cannot host every room.
+    {
+        r::RelayCore c3;
+        std::vector<r::RelayCore::Out> o3;
+        int ok = 0;
+        for (uint16_t i = 0; i < 20; ++i) {
+            auto id = net::derive_room_secrets(net::generate_room_code()).room_id;
+            c3.on_datagram(net::Endpoint{0x0200007F, static_cast<uint16_t>(6000 + i)},
+                           r::encode_join(id, r::Role::Host), t, o3);
+            ok += status_of(o3.back()) == int(r::Status::Ok);
+        }
+        CHECK(ok == r::RelayCore::kMaxHostedPerIp && c3.rooms() == size_t(ok));
+        // Another address still gets one.
+        c3.on_datagram(net::Endpoint{0x0300007F, 7000}, r::encode_join(room, r::Role::Host), t, o3);
+        CHECK(status_of(o3.back()) == int(r::Status::Ok));
+    }
     // Leaving empties the room.
     core.on_datagram(x, r::encode(r::Type::Leave, room), t, out);
     core.on_datagram(h, r::encode(r::Type::Leave, room), t, out);
