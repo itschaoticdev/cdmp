@@ -49,6 +49,46 @@ internal static class Game
             yield return m.Groups[1].Value.Replace(@"\\", @"\");
     }
 
+    // The only game build the mod's offsets are for: kPeTimestamp in src/mod/game/offsets.h
+    // (launcher.tests checks the two agree). Any other build and the mod switches its game
+    // readers off, so co-op silently does nothing - better to say so before launching.
+    public const uint SupportedPeTimestamp = 0x6AB28F00;
+    public const string SupportedBuild = "1.0.0.2976";
+    public const string BuildProblemPrefix = "Your Crimson Desert is version ";
+
+    /// <summary>The PE header TimeDateStamp of the exe, or null if it isn't a readable PE file.</summary>
+    public static uint? PeTimestamp(string exe)
+    {
+        try
+        {
+            using var r = new BinaryReader(File.OpenRead(exe));
+            if (r.BaseStream.Length < 0x40 || r.ReadUInt16() != 0x5A4D) return null; // "MZ"
+            r.BaseStream.Position = 0x3C;
+            long nt = r.ReadUInt32();
+            if (nt + 12 > r.BaseStream.Length) return null;
+            r.BaseStream.Position = nt;
+            if (r.ReadUInt32() != 0x00004550) return null; // "PE\0\0"
+            r.BaseStream.Position = nt + 8;
+            return r.ReadUInt32();
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>Null when the game in bin is the build the mod supports, else what to tell the player.</summary>
+    public static string? BuildProblem(string bin)
+    {
+        var exe = Path.Combine(bin, Exe);
+        var ts = PeTimestamp(exe);
+        if (ts == SupportedPeTimestamp) return null;
+        // A patch can keep the file version and still move every offset, so the stamp is always shown.
+        var ver = FileVersionInfo.GetVersionInfo(exe).FileVersion?.Trim();
+        var stamp = ts is { } t ? $"build stamp 0x{t:X8}" : "unreadable exe";
+        var which = string.IsNullOrEmpty(ver) ? stamp : $"{ver} ({stamp})";
+        return $"{BuildProblemPrefix}{which}. This mod only works with {SupportedBuild} so far, " +
+               "so co-op would stay off in game. Watch the mod page for an update.";
+    }
+
     public static bool Running() => Process.GetProcessesByName("CrimsonDesert").Length > 0;
 
     public static void Launch() =>

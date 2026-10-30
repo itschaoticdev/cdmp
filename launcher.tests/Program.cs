@@ -94,5 +94,42 @@ var signed = System.Security.Cryptography.X509Certificates.X509Certificate.Creat
 Check(signed.Subject.Contains("Kodian Anderson"), "payload asi carries the signature");
 File.Delete(payloadPath);
 
+// Game build check: reads the PE TimeDateStamp of CrimsonDesert.exe.
+static byte[] FakePe(uint timestamp)
+{
+    var b = new byte[0x200];
+    b[0] = (byte)'M'; b[1] = (byte)'Z';
+    BitConverter.GetBytes(0x80u).CopyTo(b, 0x3C);
+    b[0x80] = (byte)'P'; b[0x81] = (byte)'E';
+    BitConverter.GetBytes(timestamp).CopyTo(b, 0x88);
+    return b;
+}
+var gdir = Path.Combine(Path.GetTempPath(), "cdmp_build_test_" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(gdir);
+var gexe = Path.Combine(gdir, Game.Exe);
+File.WriteAllBytes(gexe, FakePe(Game.SupportedPeTimestamp));
+Check(Game.PeTimestamp(gexe) == Game.SupportedPeTimestamp, "reads the PE timestamp");
+Check(Game.BuildProblem(gdir) == null, "supported build has no problem");
+File.WriteAllBytes(gexe, FakePe(0x6B000000));
+var problem = Game.BuildProblem(gdir);
+Check(problem != null && problem.StartsWith(Game.BuildProblemPrefix) && problem.Contains("0x6B000000") && problem.Contains(Game.SupportedBuild),
+      "other build is reported with its stamp and the supported version");
+File.WriteAllText(gexe, "stand-in");
+Check(Game.PeTimestamp(gexe) == null && Game.BuildProblem(gdir) != null, "a non-PE exe is not taken as supported");
+var truncated = FakePe(Game.SupportedPeTimestamp);
+BitConverter.GetBytes(0x7FFFFFF0u).CopyTo(truncated, 0x3C);
+File.WriteAllBytes(gexe, truncated);
+Check(Game.PeTimestamp(gexe) == null, "e_lfanew past the end is rejected");
+Directory.Delete(gdir, true);
+
+// The launcher's supported build must be the one the mod's offsets are for.
+string? offsets = null;
+for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null && offsets == null; d = d.Parent)
+    if (File.Exists(Path.Combine(d.FullName, "src", "mod", "game", "offsets.h"))) offsets = Path.Combine(d.FullName, "src", "mod", "game", "offsets.h");
+if (offsets != null)
+    Check(File.ReadAllText(offsets).Contains($"kPeTimestamp = 0x{Game.SupportedPeTimestamp:X8};"), "launcher build matches offsets.h kPeTimestamp");
+else
+    Check(false, "offsets.h found from " + AppContext.BaseDirectory);
+
 Console.WriteLine(failures == 0 ? "All launcher tests passed" : $"{failures} failed");
 return failures == 0 ? 0 : 1;

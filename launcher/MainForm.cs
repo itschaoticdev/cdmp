@@ -134,6 +134,9 @@ public sealed class MainForm : Form
         _gamePath.Text = bin;
         _install.Enabled = true;
         _play.Enabled = true;
+        var problem = Game.BuildProblem(bin);
+        if (problem != null) Status(problem, bad: true);
+        else if (_status.Text.StartsWith(Game.BuildProblemPrefix)) Status(""); // a supported folder was picked after an old one
         switch (Mod.State(bin))
         {
             case ModState.Installed: _modState.Text = "Mod installed"; _modState.ForeColor = Theme.Good; _install.Text = "Remove"; break;
@@ -197,6 +200,7 @@ public sealed class MainForm : Form
         bool host = _hostMode.Checked;
         string? code = host ? _s.HostCode : RoomCode.Normalize(_joinCode.Text);
         if (code == null) { Status("Enter your friend's code first.", bad: true); return; }
+        if (Game.BuildProblem(bin) is { } problem) { Status(problem, bad: true); return; }
         try
         {
             if (Mod.State(bin) != ModState.Installed) Mod.Install(bin);
