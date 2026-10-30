@@ -9,7 +9,7 @@
     <AssemblyName>CDMP-Launcher</AssemblyName>
     <RootNamespace>Cdmp.Launcher</RootNamespace>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
     <Company>Crimson Desert Multiplayer</Company>
     <Product>Crimson Desert Multiplayer Launcher</Product>
     <Description>Unofficial co-op mod launcher for Crimson Desert</Description>

@@ -54,7 +54,7 @@ internal static class Game
     // readers off, so co-op silently does nothing - better to say so before launching.
     public const uint SupportedPeTimestamp = 0x6AB28F00;
     public const string SupportedBuild = "1.0.0.2976";
-    public const string BuildProblemPrefix = "Your Crimson Desert is version ";
+    public const string BuildProblemPrefix = "This Crimson Desert is ";
 
     /// <summary>The PE header TimeDateStamp of the exe, or null if it isn't a readable PE file.</summary>
     public static uint? PeTimestamp(string exe)
@@ -84,7 +84,7 @@ internal static class Game
         // A patch can keep the file version and still move every offset, so the stamp is always shown.
         var ver = FileVersionInfo.GetVersionInfo(exe).FileVersion?.Trim();
         var stamp = ts is { } t ? $"build stamp 0x{t:X8}" : "unreadable exe";
-        var which = string.IsNullOrEmpty(ver) ? stamp : $"{ver} ({stamp})";
+        var which = string.IsNullOrEmpty(ver) ? $"an unknown version ({stamp})" : $"version {ver} ({stamp})";
         return $"{BuildProblemPrefix}{which}. This mod only works with {SupportedBuild} so far, " +
                "so co-op would stay off in game. Watch the mod page for an update.";
     }
