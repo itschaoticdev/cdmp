@@ -52,8 +52,8 @@ internal static class Game
     // The only game build the mod's offsets are for: kPeTimestamp in src/mod/game/offsets.h
     // (launcher.tests checks the two agree). Any other build and the mod switches its game
     // readers off, so co-op silently does nothing - better to say so before launching.
-    public const uint SupportedPeTimestamp = 0x6AB28F00;
-    public const string SupportedBuild = "1.0.0.2976";
+    public const uint SupportedPeTimestamp = 0x6AE58024;
+    public const string SupportedBuild = "1.0.0.3460";
     public const string BuildProblemPrefix = "This Crimson Desert is ";
 
     /// <summary>The PE header TimeDateStamp of the exe, or null if it isn't a readable PE file.</summary>

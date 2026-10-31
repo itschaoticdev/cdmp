@@ -139,7 +139,7 @@ public:
     explicit LocalSource(bool in_game) : in_game_(in_game) {
         if (!in_game_) return;
         if (reader_.init()) {
-            log::info("Game reader enabled (build 1.0.0.2976 offsets)");
+            log::info("Game reader enabled (build 1.0.0.3460 offsets)");
         } else {
             log::warn("Game reader DISABLED: {}. Only networking will run.",
                       reader_.last_failure());
@@ -501,7 +501,7 @@ void minimap_cycle_loop() {
         if (down && !was_down) {
             const bool back = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
             int at = net::puppet_minimap_offset();
-            if (at < 0xEA || at > 0x16C) at = game::build_2976::kMinimapIconPlayerArrow;
+            if (at < 0xEA || at > 0x16C) at = game::build_3460::kMinimapIconPlayerArrow;
             else at += back ? -2 : 2;
             if (at > 0x16C) at = 0xEA;
             if (at < 0xEA) at = 0x16C;
@@ -555,7 +555,7 @@ void combat_test_loop() {
                 std::memcpy(b.data(), &npc->key, 4);
                 std::memcpy(b.data() + 4, &hp_stat, 4);
                 std::memcpy(b.data() + 8, &delta, 8);
-                const bool ok = net::sniffer_inject_c2s(packet(2181, b));
+                const bool ok = net::sniffer_inject_c2s(packet(2565, b));
                 log::info("Combat test T2: VaryStatByAccInputReq(0x{:08X} at {:.1f} m, HP, -5) {}",
                           npc->key, npc->distance, ok ? "queued" : "NOT queued");
             } else {
@@ -573,7 +573,7 @@ void combat_test_loop() {
                 std::memcpy(b.data() + 12, pos, 12);
                 std::memcpy(b.data() + 24, dir, 12);
                 std::memcpy(b.data() + 36, &hash, 4);
-                const bool ok = net::sniffer_inject_c2s(packet(2815, b));
+                const bool ok = net::sniffer_inject_c2s(packet(2150, b));
                 log::info("Combat test T3: AttackByCollisionReq(0x{:08X} at {:.1f} m, hash 0x{:08X}) {}",
                           npc->key, npc->distance, hash, ok ? "queued" : "NOT queued");
             }
@@ -638,7 +638,7 @@ DWORD WINAPI late_init(LPVOID param) {
     if (init->in_game) {
         log::info("Late init: waiting for the game to finish starting up");
         const auto world_slot = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) +
-                                game::build_2976::kWorldSystemSlot;
+                                game::build_3460::kWorldSystemSlot;
         // WorldSystem exists from the title screen on, i.e. after the game
         // created its device and swap chain and started presenting.
         while (!stop_requested(500)) {

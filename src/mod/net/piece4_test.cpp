@@ -25,11 +25,11 @@ namespace {
 
 using Bytes = std::vector<uint8_t>;
 
-constexpr uint16_t kOpAttackTargetAck = 2922;            // +0 target | +4 attacker | +0x24 attack hash
-constexpr uint16_t kOpApplyActionRestrictionAck = 2162;  // 77 B: +0 target | +0x24 instance | +0x49 source
-constexpr uint16_t kOpApplyBuffAck = 2506;               // 77 B: +0 holder | +4 buff | +0x14 instance | +0x18 source |
+constexpr uint16_t kOpAttackTargetAck = 2791;            // +0 target | +4 attacker | +0x24 attack hash
+constexpr uint16_t kOpApplyActionRestrictionAck = 3059;  // 77 B: +0 target | +0x24 instance | +0x49 source
+constexpr uint16_t kOpApplyBuffAck = 2677;               // 77 B: +0 holder | +4 buff | +0x14 instance | +0x18 source |
                                                          // +0x1C holder | +0x29 source position
-constexpr uint16_t kOpStartActionReq = 2223;             // +0 actor | +4 previous action | +8 new action
+constexpr uint16_t kOpStartActionReq = 2202;             // +0 actor | +4 previous action | +8 new action
 constexpr size_t kBatchSize = 77;
 constexpr uint32_t kPuppetPlayer = 0xA010F001;
 
@@ -143,7 +143,7 @@ void die_test(const char* what, uint32_t attacker) {
         std::memcpy(b.data() + 4, &stat, 4);
         std::memcpy(b.data() + 8, &delta, 8);
         Bytes pkt(5 + b.size());
-        const uint16_t op = 2181, len = 16;
+        const uint16_t op = 2565, len = 16;  // VaryStatByAccInputReq
         std::memcpy(pkt.data(), &op, 2);
         std::memcpy(pkt.data() + 3, &len, 2);
         std::memcpy(pkt.data() + 5, b.data(), b.size());
@@ -161,7 +161,7 @@ void die_test(const char* what, uint32_t attacker) {
     std::memcpy(b.data() + 24, dir, sizeof dir);
     std::memcpy(b.data() + 36, &projectile, 4);
     Bytes pkt(5 + b.size());
-    const uint16_t op = 2815, len = static_cast<uint16_t>(b.size());
+    const uint16_t op = 2150, len = static_cast<uint16_t>(b.size());
     std::memcpy(pkt.data(), &op, 2);
     std::memcpy(pkt.data() + 3, &len, 2);
     std::memcpy(pkt.data() + 5, b.data(), b.size());

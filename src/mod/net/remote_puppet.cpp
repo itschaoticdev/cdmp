@@ -33,7 +33,7 @@
 
 namespace cdmp::net {
 namespace {
-namespace off = game::build_2976;
+namespace off = game::build_3460;
 using Bytes = std::vector<uint8_t>;
 
 // Fresh keys for the puppet. Real serials seen so far are below 0x1000, so
@@ -591,7 +591,7 @@ std::atomic<float> g_end_gap_copy{-1.0f}, g_end_gap_ours{-1.0f};  // |B - target
 bool g_rope_lookup_faulted = false;
 // ReleaseRemoteCatchResultAck: u32 catcher | u8 slot | u8 reason (reader
 // 0xB5BD60 -> 0x5A7A10; the game's own releases use reason 2).
-constexpr uint16_t kOpReleaseRemoteCatchResultAck = 2471;
+constexpr uint16_t kOpReleaseRemoteCatchResultAck = 2464;
 constexpr uint8_t kReleaseReason = 2;
 
 std::string scene_text(const SceneId& id) {

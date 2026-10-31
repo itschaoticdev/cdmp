@@ -27,12 +27,12 @@ namespace {
 
 using Bytes = std::vector<uint8_t>;
 
-constexpr uint16_t kOpDoFrameEventReq = 2380;
-constexpr uint16_t kOpVaryHPAck = 2147;
-constexpr uint16_t kOpVaryStatByAccInputReq = 2181;
-constexpr uint16_t kOpAttackTargetAck = 2922;            // +0 target | +4 attacker
-constexpr uint16_t kOpApplyActionRestrictionAck = 2162;  // 77 B: +0 target | +0x24 instance | +0x49 source
-constexpr uint16_t kOpApplyBuffAck = 2506;               // 77 B: +0 holder | +4 buff | +0x14 instance |
+constexpr uint16_t kOpDoFrameEventReq = 3030;
+constexpr uint16_t kOpVaryHPAck = 2740;
+constexpr uint16_t kOpVaryStatByAccInputReq = 2565;
+constexpr uint16_t kOpAttackTargetAck = 2791;            // +0 target | +4 attacker
+constexpr uint16_t kOpApplyActionRestrictionAck = 3059;  // 77 B: +0 target | +0x24 instance | +0x49 source
+constexpr uint16_t kOpApplyBuffAck = 2677;               // 77 B: +0 holder | +4 buff | +0x14 instance |
                                                          // +0x18 source | +0x1C holder | +0x29 source pos |
                                                          // +0x39/+0x41 server ms
 constexpr size_t kBatchSize = 77;
@@ -515,7 +515,7 @@ bool die_by_collision(uint32_t own) {
     std::memcpy(b + 24, dir, sizeof dir);
     std::memcpy(b + 36, &projectile, 4);
     Bytes pkt(5 + sizeof b);
-    const uint16_t op = 2815, len = sizeof b;  // AttackByCollisionReq
+    const uint16_t op = 2150, len = sizeof b;  // AttackByCollisionReq
     std::memcpy(pkt.data(), &op, 2);
     std::memcpy(pkt.data() + 3, &len, 2);
     std::memcpy(pkt.data() + 5, b, sizeof b);

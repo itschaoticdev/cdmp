@@ -23,12 +23,12 @@
 
 namespace cdmp::net {
 namespace {
-namespace off = game::build_2976;
+namespace off = game::build_3460;
 
 constexpr uint32_t kPuppetPlayer = 0xA010F001;
-constexpr uint16_t kOpCurrentTargetChangeReq = 2984;   // u32 actor | u32 target | u64 seq | u8 | u8 reason
-constexpr uint16_t kOpCurrentTargetChangedAck = 3040;  // same 18 B; u8 at +0x10 = force
-constexpr uint16_t kOpDoFrameEventReq = 2380;
+constexpr uint16_t kOpCurrentTargetChangeReq = 2820;   // u32 actor | u32 target | u64 seq | u8 | u8 reason
+constexpr uint16_t kOpCurrentTargetChangedAck = 2609;  // same 18 B; u8 at +0x10 = force
+constexpr uint16_t kOpDoFrameEventReq = 3030;
 
 constexpr uintptr_t kIsTargetable = 0x22141E0;    // (target comp, actor* candidate, u8 mode)
 constexpr uint8_t kIsTargetableHead[] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74,

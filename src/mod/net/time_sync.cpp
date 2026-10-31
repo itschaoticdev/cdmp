@@ -19,7 +19,7 @@
 
 namespace cdmp::net {
 namespace {
-namespace off = game::build_2976;
+namespace off = game::build_3460;
 
 constexpr uint32_t kSendEveryMs = 5000;
 // Below this difference nothing is done: ~2 game minutes, 10 real seconds.
@@ -61,6 +61,10 @@ std::string hhmm(uint64_t raw) {
 std::optional<std::pair<FieldTime, uint64_t>> own_time() {
     if (!capture_game_clock_trusted()) {
         problem("waiting for the game clock (move once)");
+        return std::nullopt;
+    }
+    if (!off::kFieldTimeClient) {
+        problem("time of day is not ported to this game build yet");
         return std::nullopt;
     }
     static const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));

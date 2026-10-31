@@ -21,7 +21,7 @@ std::string current_text() {
     LearntCombat c;
     guest_hits_learnt_get(c);
     hits_learnt_get(c);
-    return c.empty() ? std::string() : learnt::format(c, game::build_2976::kPeTimestamp);
+    return c.empty() ? std::string() : learnt::format(c, game::build_3460::kPeTimestamp);
 }
 
 // The whole file goes to a .tmp first, then replaces the old one: a game
@@ -60,7 +60,7 @@ void learnt_load(const std::wstring& dir) {
         text.resize(read);
     }
     CloseHandle(h);
-    const auto c = learnt::parse(text, game::build_2976::kPeTimestamp);
+    const auto c = learnt::parse(text, game::build_3460::kPeTimestamp);
     if (!c) {
         log::warn("Learnt: cdmp_learnt.txt is not usable (another game build, or damaged): ignored and replaced");
         return;

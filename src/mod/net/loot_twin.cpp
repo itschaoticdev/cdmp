@@ -28,22 +28,22 @@ namespace {
 using Bytes = std::vector<uint8_t>;
 
 constexpr uint16_t kOpActorLoadDataAck = 2005;
-constexpr uint16_t kOpDoFrameEventReq = 2380;              // u8 4 | u32 attacker | ... | 665-byte targets at the end
-constexpr uint16_t kOpSpawnCharacterCheatReq = 2115;       // u32 variant | u32 0 | vec3 | u8 spawn reason
-constexpr uint16_t kOpKillCheatReq = 2279;                 // u32 victim | u32 option (0 = dies at once)
-constexpr uint16_t kOpNotifyHandleDeadAck = 2530;          // u32 dead | ...
-constexpr uint16_t kOpLootDropCharacterRewardListAck = 2897;  // u8 4 | u32 dead | n x 37 B
-constexpr uint16_t kOpRemoveLootableAck = 2822;            // u32 dead | u32 player
-constexpr uint16_t kOpInteractionPreemptionStepReq = 2671;  // u32 who | u32 target | ... (25 B)
-constexpr uint16_t kOpInteractionDoStepReq = 2720;          // u32 who | u32 target | ... (16 B)
-constexpr uint16_t kOpInteractionPreemptionStepSuccessAck = 2663;  // u32 who | the 25 B (target at +8)
-constexpr uint16_t kOpInteractionPreemptionStepFailAck = 3000;     // u32 who | u32 target | ... | u32 error at +12
-constexpr uint16_t kOpLootingDropFromDeadBodyReq = 3052;            // u32 dead | u8 | u8 (botin-invitado.md §1.4)
+constexpr uint16_t kOpDoFrameEventReq = 3030;              // u8 4 | u32 attacker | ... | 665-byte targets at the end
+constexpr uint16_t kOpSpawnCharacterCheatReq = 2185;       // u32 variant | u32 0 | vec3 | u8 spawn reason
+constexpr uint16_t kOpKillCheatReq = 2210;                 // u32 victim | u32 option (0 = dies at once)
+constexpr uint16_t kOpNotifyHandleDeadAck = 2985;          // u32 dead | ...
+constexpr uint16_t kOpLootDropCharacterRewardListAck = 2414;  // u8 4 | u32 dead | n x 37 B
+constexpr uint16_t kOpRemoveLootableAck = 3066;            // u32 dead | u32 player
+constexpr uint16_t kOpInteractionPreemptionStepReq = 3008;  // u32 who | u32 target | ... (25 B)
+constexpr uint16_t kOpInteractionDoStepReq = 3073;          // u32 who | u32 target | ... (16 B)
+constexpr uint16_t kOpInteractionPreemptionStepSuccessAck = 2120;  // u32 who | the 25 B (target at +8)
+constexpr uint16_t kOpInteractionPreemptionStepFailAck = 3100;     // u32 who | u32 target | ... | u32 error at +12
+constexpr uint16_t kOpLootingDropFromDeadBodyReq = 2491;            // u32 dead | u8 | u8 (botin-invitado.md §1.4)
 constexpr uint32_t kErrInteractionCondition = 0x2569C661;          // eErrNoInteractionTargetConditionCheckFail
 constexpr uint64_t kRescueWaitMs = 3000;
-constexpr uint16_t kOpInteractionDoStepSuccessAck = 2916;          // u32 player | the 16 B (target at +8)
-constexpr uint16_t kOpAttackerAck = 2509;           // PostProcessAttackResult_AttackerAck: u32 attacker | u32 target
-constexpr uint16_t kOpRemoveActorAck = 2516;        // 04 | u32 0 | u8 reason | n x u32 key
+constexpr uint16_t kOpInteractionDoStepSuccessAck = 2794;          // u32 player | the 16 B (target at +8)
+constexpr uint16_t kOpAttackerAck = 2181;           // PostProcessAttackResult_AttackerAck: u32 attacker | u32 target
+constexpr uint16_t kOpRemoveActorAck = 3067;        // 04 | u32 0 | u8 reason | n x u32 key
 constexpr uint8_t kSpawnReasonCheat = 33;
 constexpr size_t kTargetEntry = 665, kFirstEntry = 0x203;
 

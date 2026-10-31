@@ -9,7 +9,7 @@
 
 namespace cdmp::game {
 namespace {
-namespace off = build_2976;
+namespace off = build_3460;
 
 // Hash table of the ClientActorManager (same layout as the server's).
 constexpr uint32_t kManager_Table = 0x08;
@@ -81,7 +81,7 @@ std::optional<proto::Vec3> actor_world_position(uint32_t key) {
 std::optional<proto::Quat> actor_world_rotation(uint32_t key) {
     auto actor = find_actor(key);
     if (!actor) return std::nullopt;
-    auto components = read_ptr(*actor + build_2976::kActor_ComponentTable);
+    auto components = read_ptr(*actor + build_3460::kActor_ComponentTable);
     if (!components) return std::nullopt;
     auto ts = read_ptr(*components + kComponents_TransformSync);
     if (!ts) return std::nullopt;

@@ -28,17 +28,17 @@ namespace {
 
 using Bytes = std::vector<uint8_t>;
 
-constexpr uint16_t kOpDoFrameEventReq = 2380;
-constexpr uint16_t kOpAttackTargetAck = 2922;           // +0 target | +4 attacker | +8 flags | +0x24 attack hash
-constexpr uint16_t kOpApplyActionRestrictionAck = 2162;  // 77 B: +0 target | +0x24 instance | +0x38 hash | +0x49 source
-constexpr uint16_t kOpOnPostBuffDamagedAck = 2681;       // +0 target | +4 attacker | +0x0C u32 damage x1000
-constexpr uint16_t kOpNotifyHandleFatalAck = 2899;       // +0 key | +4 by
-constexpr uint16_t kOpApplyBuffAck = 2506;  // 77 B: +0 holder | +4 buff | +0x14 instance | +0x18 source |
+constexpr uint16_t kOpDoFrameEventReq = 3030;
+constexpr uint16_t kOpAttackTargetAck = 2791;           // +0 target | +4 attacker | +8 flags | +0x24 attack hash
+constexpr uint16_t kOpApplyActionRestrictionAck = 3059;  // 77 B: +0 target | +0x24 instance | +0x38 hash | +0x49 source
+constexpr uint16_t kOpOnPostBuffDamagedAck = 2994;       // +0 target | +4 attacker | +0x0C u32 damage x1000
+constexpr uint16_t kOpNotifyHandleFatalAck = 2225;       // +0 key | +4 by
+constexpr uint16_t kOpApplyBuffAck = 2677;  // 77 B: +0 holder | +4 buff | +0x14 instance | +0x18 source |
                                             // +0x1C holder | +0x29 source position | +0x39/+0x41 server ms
-constexpr uint16_t kOpVaryStatCheatReq = 2703;           // u32 key | u32 stat | u8 mode | i32 delta | u8 | u8
-constexpr uint16_t kOpKillCheatReq = 2279;               // u32 key | u32 option
-constexpr uint16_t kOpDieByRunOutFatalReq = 2321;        // u32 key
-constexpr uint16_t kOpAttackByCollisionReq = 2815;  // u32 victim | u32 attacker | u32 0 | vec3 point | vec3 dir |
+constexpr uint16_t kOpVaryStatCheatReq = 2326;           // u32 key | u32 stat | u8 mode | i32 delta | u8 | u8
+constexpr uint16_t kOpKillCheatReq = 2210;               // u32 key | u32 option
+constexpr uint16_t kOpDieByRunOutFatalReq = 3051;        // u32 key
+constexpr uint16_t kOpAttackByCollisionReq = 2150;  // u32 victim | u32 attacker | u32 0 | vec3 point | vec3 dir |
                                                     // u32 ProjectileInfo | u32 0 (44 B)
 // The collision of a captured native kill (105149, t = 495.8); with our player
 // as its owner it takes 7 HP and the death counts as a normal one (live test X2:

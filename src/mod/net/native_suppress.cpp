@@ -32,26 +32,26 @@ using Bytes = std::vector<uint8_t>;
 using enemy_load::Verdict;
 
 constexpr uint16_t kOpActorLoadDataAck = 2005;
-constexpr uint16_t kOpRemoveActorAck = 2516;  // 04 | u32 0 | u8 reason | n x u32 key
-constexpr uint16_t kOpNotifyHandleDeadAck = 2530;  // 19 B: dead | killer | reason
-constexpr uint16_t kOpAttackTargetAck = 2922;      // u32 target | u32 attacker | ...
-constexpr uint16_t kOpUpdateFactionRelationDataAck = 2597;
+constexpr uint16_t kOpRemoveActorAck = 3067;  // 04 | u32 0 | u8 reason | n x u32 key
+constexpr uint16_t kOpNotifyHandleDeadAck = 2985;  // 19 B: dead | killer | reason
+constexpr uint16_t kOpAttackTargetAck = 2791;      // u32 target | u32 attacker | ...
+constexpr uint16_t kOpUpdateFactionRelationDataAck = 2097;
 // The server's messages about a held native, given back behind its load
 // (fase5 §5.5; key at +0, apariencia-estado-coop.md §3): the latest of each,
 // buffs in order.
-constexpr uint16_t kOpVaryHPAck = 2147;               // 92 B
-constexpr uint16_t kOpApplyBuffAck = 2506;            // 77 B
-constexpr uint16_t kOpUnapplyBuffAck = 3007;          // 77 B
-constexpr uint16_t kOpChangeMoveSessionIDAck = 3097;  // 16 B
-constexpr uint16_t kOpUpdateElementalAck = 2642;      // 118 B
+constexpr uint16_t kOpVaryHPAck = 2740;               // 92 B
+constexpr uint16_t kOpApplyBuffAck = 2677;            // 77 B
+constexpr uint16_t kOpUnapplyBuffAck = 2521;          // 77 B
+constexpr uint16_t kOpChangeMoveSessionIDAck = 2897;  // 16 B
+constexpr uint16_t kOpUpdateElementalAck = 3143;      // 118 B
 constexpr size_t kMaxStatePerKey = 32;
 // Client->server: a native of ours fights us.
-constexpr uint16_t kOpCurrentTargetChangeReq = 2984;  // u32 actor | u32 target | ...
-constexpr uint16_t kOpDoFrameEventReq = 2380;         // 04 | u32 attacker | ... | 665-byte target entries
-constexpr uint16_t kOpChangeBattleStateReq = 2257;    // u32 actor | u8 state
+constexpr uint16_t kOpCurrentTargetChangeReq = 2820;  // u32 actor | u32 target | ...
+constexpr uint16_t kOpDoFrameEventReq = 3030;         // 04 | u32 attacker | ... | 665-byte target entries
+constexpr uint16_t kOpChangeBattleStateReq = 2453;    // u32 actor | u8 state
 // 04 | u32 NPC | u16: the NPC is about to get its weapon (a type-7 gimmick
 // whose load names it; pendiente-3g §1.5).
-constexpr uint16_t kOpOnDemandEquipDockingGimmickSpawnReq = 2249;
+constexpr uint16_t kOpOnDemandEquipDockingGimmickSpawnReq = 2288;
 
 constexpr uint8_t kReasonFar = 25;          // the server's own "far away"
 constexpr uint8_t kReasonLoadScreen = 19;   // everything goes

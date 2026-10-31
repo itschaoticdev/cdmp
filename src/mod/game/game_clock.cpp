@@ -8,7 +8,7 @@
 #include "mod/game/safe_memory.h"
 
 namespace cdmp::game {
-namespace off = build_2976;
+namespace off = build_3460;
 
 std::optional<uint64_t> client_game_clock_ms() {
     static const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));

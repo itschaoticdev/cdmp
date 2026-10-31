@@ -15,7 +15,7 @@
 
 namespace cdmp::game {
 namespace {
-namespace off = build_2976;
+namespace off = build_3460;
 
 // Entry of the logger: arguments 10-13 on the stack ([rsp] = return address).
 // Seen at a call site (0x35AED1..0x35AF10): arg10 dword = code, arg11 dword =

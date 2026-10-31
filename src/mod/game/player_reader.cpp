@@ -9,7 +9,7 @@
 #include "mod/game/safe_memory.h"
 
 namespace cdmp::game {
-namespace off = build_2976;
+namespace off = build_3460;
 
 namespace {
 
@@ -76,7 +76,9 @@ std::optional<PlayerSnapshot> PlayerReader::read() {
     auto inner = read_ptr(*control + off::kControl_Inner);
     if (!inner) return fail("control inner missing");
     auto physics = read_ptr(*inner + off::kControlInner_Physics);
-    if (!physics || !has_vtable(*physics, base_ + off::kVtPhysicsObject))
+    // kVtPhysicsObject 0 = not known for this build yet: the orthonormal basis
+    // check below is then the only type check.
+    if (!physics || (off::kVtPhysicsObject && !has_vtable(*physics, base_ + off::kVtPhysicsObject)))
         return fail("physics object missing");
 
     auto local = read_vec3(*physics + off::kPhysics_Position);
