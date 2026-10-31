@@ -20,14 +20,16 @@
 #include <string>
 #include <vector>
 
+#include "common/field_time.h"
 #include "common/pattern.h"
+#include "mod/game/offsets.h"
 #include "probe/process.h"
 
 using probe::Process;
 
 namespace {
 
-constexpr uint32_t kKnownTimestamp = 0x6AB28F00;  // CrimsonDesert.exe 1.0.0.2976
+constexpr uint32_t kKnownTimestamp = cdmp::game::build_3460::kPeTimestamp;
 
 void usage() {
     std::puts(
@@ -46,7 +48,8 @@ void usage() {
         "  rtti <addr>                          class name of the object at addr\n"
         "  classes <text> [--max N]             RTTI class names containing text\n"
         "  vtables <.?AVName@@>                 vtable address(es) of an RTTI class\n"
-        "  findptr <value> [--max N] [--heap]   where is this qword stored?\n");
+        "  findptr <value> [--max N] [--heap]   where is this qword stored?\n"
+        "  report                               check offsets.h live, write cdmp_report.txt\n");
 }
 
 // ---------------------------------------------------------------- arguments
@@ -240,7 +243,7 @@ int cmd_info(const Process& p) {
     auto ts = e_lfanew ? p.read<uint32_t>(p.module_base() + *e_lfanew + 8) : std::nullopt;
     if (ts) {
         std::printf("PE timestamp 0x%08X %s\n", *ts,
-                    *ts == kKnownTimestamp ? "(known build 1.0.0.2976)"
+                    *ts == kKnownTimestamp ? "(known build 1.0.0.3460)"
                                            : "(UNKNOWN BUILD - offsets/sigs may be invalid)");
     }
     return 0;
@@ -466,6 +469,122 @@ int cmd_vtables(const Process& p, const Args& a) {
     return 0;
 }
 
+// One-shot check of offsets.h against the running game, for a tester to send
+// back (docs/research/port-3460.md). Also looks for the two values the
+// offline port could not find: the physics vtable and the client FieldTime.
+int cmd_report(const Process& p) {
+    namespace off = cdmp::game::build_3460;
+    FILE* file = nullptr;
+    if (fopen_s(&file, "cdmp_report.txt", "w") != 0) file = nullptr;
+    auto out = [&](const std::string& s) {
+        std::fputs(s.c_str(), stdout);
+        std::fflush(stdout);
+        if (file) std::fputs(s.c_str(), file), std::fflush(file);
+    };
+    const uint64_t base = p.module_base();
+    auto rva = [&](uint64_t a) { return a >= base && a < base + p.module_size() ? a - base : a; };
+    auto vt_of = [&](uint64_t obj) -> uint64_t { return obj ? p.read<uint64_t>(obj).value_or(0) : 0; };
+    auto check_vt = [&](const char* what, uint64_t obj, uint64_t want) {
+        const uint64_t vt = vt_of(obj);
+        out(std::format("{:28s} obj 0x{:X} vtable exe+0x{:X} {} {}\n", what, obj, rva(vt),
+                        want ? (vt == base + want ? "OK" : std::format("EXPECTED exe+0x{:X}", want)) : "(record this)",
+                        obj ? p.rtti_name(obj) : ""));
+        return obj;
+    };
+    auto ptr = [&](uint64_t a) -> uint64_t { return a ? p.read<uint64_t>(a).value_or(0) : 0; };
+
+    auto e_lfanew = p.read<int32_t>(base + 0x3C);
+    auto ts = e_lfanew ? p.read<uint32_t>(base + *e_lfanew + 8) : std::nullopt;
+    out(std::format("CDMP probe report\nPE timestamp 0x{:08X} {}\n\n", ts.value_or(0),
+                    ts == off::kPeTimestamp ? "(1.0.0.3460, the ported build)" : "(NOT the ported build)"));
+
+    out("-- function heads (hooks check these before patching)\n");
+    auto head = [&](const char* what, uint64_t at, const uint8_t* want, size_t n) {
+        std::vector<uint8_t> got(n);
+        const bool ok = p.read(base + at, got.data(), n) && std::memcmp(got.data(), want, n) == 0;
+        out(std::format("{:28s} exe+0x{:X} {}\n", what, at, ok ? "OK" : "DIFFERENT"));
+    };
+    head("ClientClock", off::kClientClock, off::kClientClockHead, sizeof off::kClientClockHead);
+    head("ClientPostPacket", off::kClientPostPacket, off::kClientPostPacketHead, sizeof off::kClientPostPacketHead);
+    head("ClientOnRecvPacket", off::kClientOnRecvPacket, off::kClientOnRecvPacketHead, sizeof off::kClientOnRecvPacketHead);
+    head("MinimapIconDecide", off::kMinimapIconDecide, off::kMinimapIconDecideHead, sizeof off::kMinimapIconDecideHead);
+    head("ServerOtherEquipWriter", off::kServerOtherEquipWriter, off::kServerOtherEquipWriterHead, sizeof off::kServerOtherEquipWriterHead);
+    head("ServerDockingWriter", off::kServerDockingWriter, off::kServerDockingWriterHead, sizeof off::kServerDockingWriterHead);
+    head("PointClimbEnter", off::kPointClimbEnter, off::kPointClimbEnterHead, sizeof off::kPointClimbEnterHead);
+    head("ActionLayerAdvance", off::kActionLayerAdvance, off::kActionLayerAdvanceHead, sizeof off::kActionLayerAdvanceHead);
+    head("ActionLayersAdvance", off::kActionLayersAdvance, off::kActionLayersAdvanceHead, sizeof off::kActionLayersAdvanceHead);
+    head("RideOnEnter", off::kRideOnEnter, off::kRideEnterHead, sizeof off::kRideEnterHead);
+    head("RideOffEnter", off::kRideOffEnter, off::kRideEnterHead, sizeof off::kRideEnterHead);
+
+    out("\n-- player chain (load a save and stand still first)\n");
+    const uint64_t ws = ptr(base + off::kWorldSystemSlot);
+    out(std::format("{:28s} 0x{:X} {}\n", "WorldSystem", ws, ws ? p.rtti_name(ws) : "NULL"));
+    const uint64_t mgr = check_vt("ClientActorManager", ptr(ws ? ws + off::kWorldSystem_ActorManager : 0), off::kVtClientActorManager);
+    const uint64_t actor = check_vt("ControlledActor", ptr(mgr ? mgr + off::kActorManager_ControlledActor : 0), off::kVtControlledActor);
+    const uint64_t comps = ptr(actor ? actor + off::kActor_ComponentTable : 0);
+    check_vt("StatusComponent", ptr(comps ? comps + off::kComponents_Status : 0), off::kVtStatusComponent);
+    const uint64_t control = check_vt("CharacterControl", ptr(comps ? comps + off::kComponents_CharacterControl : 0), off::kVtCharacterControl);
+    const uint64_t inner = ptr(control ? control + off::kControl_Inner : 0);
+    const uint64_t physics = check_vt("PhysicsObject  <- NEEDED", ptr(inner ? inner + off::kControlInner_Physics : 0), off::kVtPhysicsObject);
+    float pos[3] = {}, origin[3] = {}, stat[3] = {}, ax[3] = {};
+    if (physics) {
+        p.read(physics + off::kPhysics_Position, pos, sizeof pos);
+        p.read(physics + off::kPhysics_AxisX, ax, sizeof ax);
+    }
+    p.read(base + off::kChunkOrigin, origin, sizeof origin);
+    p.read(base + off::kStaticPlayerPos, stat, sizeof stat);
+    out(std::format("physics local pos  ({:.2f}, {:.2f}, {:.2f})  axis X ({:.3f}, {:.3f}, {:.3f})\n", pos[0], pos[1], pos[2], ax[0], ax[1], ax[2]));
+    out(std::format("local + chunk origin ({:.2f}, {:.2f}, {:.2f})\n", pos[0] + origin[0], pos[1] + origin[1], pos[2] + origin[2]));
+    out(std::format("static player pos    ({:.2f}, {:.2f}, {:.2f})  (should equal the line above)\n", stat[0], stat[1], stat[2]));
+
+    out("\n-- camera, clock, minimap\n");
+    const uint64_t cam = check_vt("Camera", ptr(base + off::kCameraSlot), off::kVtCamera);
+    float sentinel = 0;
+    if (cam) p.read(ptr(cam + off::kCamera_Block) + off::kCameraBlock_Sentinel, &sentinel, 4);
+    out(std::format("camera sentinel {:.1f} {}\n", sentinel, sentinel == off::kCameraBlockSentinelValue ? "OK" : "(expected 6360000)"));
+    const uint64_t ms0 = p.read<uint64_t>(base + off::kClientFrameClockMs).value_or(0);
+    Sleep(1000);
+    const uint64_t ms1 = p.read<uint64_t>(base + off::kClientFrameClockMs).value_or(0);
+    out(std::format("frame clock ms {} -> {} after 1 s (expect about +1000)\n", ms0, ms1));
+    out(std::format("clock bias {}\n", p.read<int64_t>(base + off::kClientClockBias).value_or(0)));
+    const uint64_t root = ptr(base + off::kMinimapIconRoot), alt = ptr(base + off::kMinimapIconRootAlt);
+    out(std::format("minimap icon root 0x{:X} {} / alt 0x{:X}\n", root, root ? p.rtti_name(root) : "", alt));
+
+    out("\n-- message ids (static Troc instances: RTTI name and opcode)\n");
+    struct Msg { const char* name; uint64_t inst; uint16_t op; };
+    for (const Msg& m : {Msg{"MoveActorReq", 0x6EA6240, off::kOpMoveActorReq}, Msg{"MoveActorAck", 0x6E880C0, off::kOpMoveActorAck},
+                         Msg{"ActorLoadDataAck", 0x6E9AEF0, off::kOpActorLoadDataAck}, Msg{"SetFieldTimeReq", 0x6EA8C70, off::kOpSetFieldTimeReq}}) {
+        const uint32_t op = p.read<uint32_t>(base + m.inst + off::kTroc_Opcode).value_or(0);
+        out(std::format("{:28s} {} opcode {} {}\n", m.name, p.rtti_name(base + m.inst), op, op == m.op ? "OK" : "MISMATCH"));
+    }
+
+    out("\n-- FieldTime candidates (client copy; the server copy usually sits +0x20)\n");
+    // The anchor field is the client game clock in ms: look for valid times
+    // whose anchor is within a day of the frame clock.
+    const uint64_t lo = off::kTrocInstancesBegin - 0x200000, hi = off::kTrocInstancesEnd + 0x400000;
+    std::vector<uint8_t> buf((hi - lo + 0xFFF) & ~uint64_t{0xFFF});
+    for (uint64_t pg = 0; pg < buf.size(); pg += 0x1000) {  // page by page: one bad page must not void the scan
+        if (!p.read(base + lo + pg, buf.data() + pg, 0x1000)) std::memset(buf.data() + pg, 0, 0x1000);
+    }
+    size_t found = 0;
+    if (ms1) {
+        for (size_t i = 0; i + 64 <= buf.size() && found < 12; i += 8) {
+            auto f = cdmp::FieldTime::from_memory(buf.data() + i);
+            if (!f || f->anchor == 0 || f->weekday != f->day % 7) continue;
+            const uint64_t d = f->anchor > ms1 ? f->anchor - ms1 : ms1 - f->anchor;
+            if (d > 86'400'000) continue;
+            const bool pair = cdmp::FieldTime::from_memory(buf.data() + i + 0x20).has_value();
+            out(std::format("exe+0x{:X}  day {} {:02}:{:02}  scale {}  {}\n", lo + i, f->day, f->hour, f->minute, f->scale,
+                            pair ? "(+0x20 also a FieldTime)" : ""));
+            ++found;
+        }
+    }
+    if (!found) out("none found (stand in the open world, not a dungeon)\n");
+    if (file) std::fclose(file);
+    std::puts("\nWritten to cdmp_report.txt");
+    return 0;
+}
+
 int cmd_findptr(const Process& p, const Args& a) {
     if (a.pos.size() < 2) return usage(), 2;
     auto value = parse_addr(p, a.pos[1]);
@@ -487,7 +606,17 @@ int cmd_findptr(const Process& p, const Args& a) {
 
 int main(int argc, char** argv) {
     Args a = parse_args(argc, argv);
-    if (a.pos.empty()) return usage(), 2;
+    // Double-clicked (no arguments): run the tester report and keep the window open.
+    const bool double_clicked = argc == 1;
+    if (double_clicked) a.pos.push_back("report");
+    struct Pause {
+        bool on;
+        ~Pause() {
+            if (!on) return;
+            std::puts("\nPress Enter to close.");
+            (void)std::getchar();
+        }
+    } pause{double_clicked};
 
     Process p;
     bool attached = false;
@@ -515,6 +644,7 @@ int main(int argc, char** argv) {
     if (cmd == "classes") return cmd_classes(p, a);
     if (cmd == "vtables") return cmd_vtables(p, a);
     if (cmd == "findptr") return cmd_findptr(p, a);
+    if (cmd == "report") return cmd_report(p);
     usage();
     return 2;
 }
