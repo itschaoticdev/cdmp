@@ -1,4 +1,4 @@
-"""cd_port.py OLD.exe NEW.exe [offsets.h] [--json out.json]
+"""cd_port.py OLD.exe NEW.exe [offsets.h] [--json out.json] [--only kName,kName]
 
 Carries the RVAs in src/mod/game/offsets.h from the build they were verified on
 (OLD) to a new build (NEW), offline. Nothing here is trusted until cdmp_probe
@@ -146,11 +146,16 @@ def port_global(old, new, rva):
 
 
 def rtti_name(img, vt):
+    """(type name, COL offset) for the vtable at `vt`, or (None, None) when the slot
+    before it is not a CompleteObjectLocator pointer inside the image."""
+    n = len(img.img)
+    if not 8 <= vt <= n: return None, None
     col = img.u64(vt - 8) - img.base
-    if img.u32(col) != 1: return None, None
+    if not 0 <= col <= n - 24 or img.u32(col) != 1: return None, None
     td = img.u32(col + 12); off = img.u32(col + 4)
+    if not 0 <= td <= n - 17: return None, None
     name = bytes(img.img[td + 16: td + 16 + 512]).split(b"\0")[0]
-    return name, off
+    return (name or None), off
 
 
 def port_vtable(old, new, vt):
@@ -177,13 +182,21 @@ def parse_offsets(path):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    argv, only, skip_next = sys.argv[1:], None, False
+    args = []
+    for i, a in enumerate(argv):
+        if skip_next: skip_next = False; continue
+        if a in ("--json", "--only"):
+            skip_next = True
+            if a == "--only" and i + 1 < len(argv): only = set(argv[i + 1].split(","))
+            continue
+        args.append(a)
     old, new = Image(args[0]), Image(args[1])
     src, vals, heads = parse_offsets(args[2] if len(args) > 2 else r"C:\cdmp\src\mod\game\offsets.h")
     lo_old = min(a for a, _ in old.code); size_old = len(old.img)
     rows = []
     for k, v in vals.items():
-        if k in SKIP: continue
+        if k in SKIP or (only and k not in only): continue
         is_rva = 0x1000 <= v < size_old and (k in heads or k in FUNCS or k.startswith(VTABLE_PREFIX)
                                               or any(k == x for x in ("kTrocInstancesBegin", "kTrocInstancesEnd"))
                                               or (v >= 0x100000 and not k.startswith(("kOp", "kStat", "kCamera_", "kCameraBlock"))))
@@ -191,6 +204,10 @@ def main():
             rows.append((k, v, None, "verify in game", "not an address")); continue
         if k.startswith(VTABLE_PREFIX):
             nv, how = port_vtable(old, new, v); kind = "vtable"
+            if nv is None and how.startswith("no RTTI"):
+                # No RTTI (camera, physics object): constructors still `lea` the vtable.
+                nv, why = port_global(old, new, v)
+                how = f"no RTTI; by code refs: {why}"
         elif k in heads or k in FUNCS:
             nv, how = port_function(old, new, v); kind = "function"
         else:

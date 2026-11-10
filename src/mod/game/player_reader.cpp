@@ -7,6 +7,7 @@
 #include "common/math3d.h"
 #include "mod/game/offsets.h"
 #include "mod/game/safe_memory.h"
+#include "mod/log.h"
 
 namespace cdmp::game {
 namespace off = build_3460;
@@ -76,10 +77,20 @@ std::optional<PlayerSnapshot> PlayerReader::read() {
     auto inner = read_ptr(*control + off::kControl_Inner);
     if (!inner) return fail("control inner missing");
     auto physics = read_ptr(*inner + off::kControlInner_Physics);
-    // kVtPhysicsObject 0 = not known for this build yet: the orthonormal basis
-    // check below is then the only type check.
-    if (!physics || (off::kVtPhysicsObject && !has_vtable(*physics, base_ + off::kVtPhysicsObject)))
-        return fail("physics object missing");
+    if (!physics) return fail("physics object missing");
+    // kVtPhysicsObject was ported offline (no RTTI) and is not verified in game
+    // yet: a mismatch is logged once and the orthonormal basis check below is
+    // then the only type check. 0 = not known for this build.
+    if (off::kVtPhysicsObject && !has_vtable(*physics, base_ + off::kVtPhysicsObject)) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            uintptr_t vt = 0;
+            safe_read(*physics, &vt, sizeof vt);
+            log::warn("Player reader: physics vtable exe+0x{:X}, expected exe+0x{:X} (please report)",
+                      vt - base_, off::kVtPhysicsObject);
+        }
+    }
 
     auto local = read_vec3(*physics + off::kPhysics_Position);
     auto origin = read_vec3(base_ + off::kChunkOrigin);

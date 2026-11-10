@@ -27,3 +27,4 @@ launcher/obj/
 launcher.tests/bin/
 launcher.tests/obj/
 dist/
+__pycache__/

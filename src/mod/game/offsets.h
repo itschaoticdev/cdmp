@@ -27,8 +27,9 @@ inline constexpr uintptr_t kClientFrameClockMs = 0x70D1DE0;  // u64
 inline constexpr uintptr_t kClientFrameClockUs = 0x70D1DF0;  // u64
 inline constexpr uintptr_t kClientClockBias = 0x71B5F48;     // i64, set by ServerTimeInfoAck
 // The client's copy of the time of day, pa::FieldTime (32 bytes; field_time.h,
-// hora-del-dia.md section 8). The server's copy is at 0x6A6D238.
-inline constexpr uintptr_t kFieldTimeClient = 0;
+// hora-del-dia.md section 8). The server's copy is at +0x20 (0x6EA39B8).
+// Ported offline 11-09 (cd_port.py, 4/4 RIP-xref votes; server copy agrees).
+inline constexpr uintptr_t kFieldTimeClient = 0x6EA3998;
 inline constexpr uint16_t kOpSetFieldTimeReq = 2227;  // FieldTime(31) | u8 flag | u32 key
 inline constexpr uint16_t kOpSetFieldTimeAck = 2952;  // u32 key | FieldTime(31)
 
@@ -37,7 +38,9 @@ inline constexpr uintptr_t kVtClientActorManager = 0x593DCF0;
 inline constexpr uintptr_t kVtControlledActor = 0x590BCA0;  // ClientChildOnlyInGameActor
 inline constexpr uintptr_t kVtCharacterControl = 0x593C8E0;
 inline constexpr uintptr_t kVtStatusComponent = 0x59136E0;
-inline constexpr uintptr_t kVtPhysicsObject = 0;
+// No RTTI: ported by constructor `lea` refs (2/2 votes, same 3-slot shape as
+// 2976). Not verified in game; player_reader only warns on a mismatch.
+inline constexpr uintptr_t kVtPhysicsObject = 0x60C4390;
 
 // WorldSystem
 inline constexpr uint32_t kWorldSystem_ActorManager = 0x30;
