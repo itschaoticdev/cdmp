@@ -29,7 +29,7 @@ using probe::Process;
 
 namespace {
 
-constexpr uint32_t kKnownTimestamp = cdmp::game::build_3460::kPeTimestamp;
+constexpr uint32_t kKnownTimestamp = cdmp::game::build_3732::kPeTimestamp;
 
 void usage() {
     std::puts(
@@ -473,7 +473,7 @@ int cmd_vtables(const Process& p, const Args& a) {
 // back (docs/research/port-3460.md). Also looks for the two values the
 // offline port could not find: the physics vtable and the client FieldTime.
 int cmd_report(const Process& p) {
-    namespace off = cdmp::game::build_3460;
+    namespace off = cdmp::game::build_3732;
     FILE* file = nullptr;
     if (fopen_s(&file, "cdmp_report.txt", "w") != 0) file = nullptr;
     auto out = [&](const std::string& s) {

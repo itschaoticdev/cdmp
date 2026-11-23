@@ -10,7 +10,7 @@
 #include "mod/log.h"
 
 namespace cdmp::game {
-namespace off = build_3460;
+namespace off = build_3732;
 
 namespace {
 

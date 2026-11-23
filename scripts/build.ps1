@@ -22,7 +22,9 @@ $cmakeBin = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bi
 $cmake = Join-Path $cmakeBin 'cmake.exe'
 $ctest = Join-Path $cmakeBin 'ctest.exe'
 
-& $cmake -S $root -B "$root\build" -G 'Visual Studio 17 2022' -A x64 -Wno-dev -Wno-deprecated
+$vsVer = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion
+$generator = if ($vsVer -like '18.*') { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
+& $cmake -S $root -B "$root\build" -G $generator -A x64 -Wno-dev -Wno-deprecated
 if ($LASTEXITCODE) { throw "CMake configure failed ($LASTEXITCODE)" }
 
 & $cmake --build "$root\build" --config $Config --parallel

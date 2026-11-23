@@ -34,7 +34,7 @@
 
 namespace cdmp::net {
 namespace {
-namespace off = game::build_3460;
+namespace off = game::build_3732;
 using Bytes = std::vector<uint8_t>;
 
 // Keys our own puppet uses (remote_puppet.cpp): never learn templates from those.

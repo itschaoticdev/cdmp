@@ -99,10 +99,19 @@ def rip_xrefs(img, target, cap=40):
     for tail in (0, 1, 2, 4):   # bytes after disp32 (imm8/16/32)
         n = len(a) - 4 - tail
         if n <= 0: continue
-        disp = (a[0:n].astype(np.int64) | (a[1:n + 1].astype(np.int64) << 8) |
-                (a[2:n + 2].astype(np.int64) << 16) | (a[3:n + 3].astype(np.int64) << 24))
-        disp = np.where(disp >= 2**31, disp - 2**32, disp)
-        pos = np.nonzero(lo + np.arange(n) + 4 + tail + disp == target)[0]
+        # disp at p must equal target - (lo + p + 4 + tail). Read the int32 at every
+        # byte position through 4 aligned views and work in chunks, so this stays
+        # at a few hundred MB instead of several GB for a 300 MB exe.
+        hits = []
+        for k in range(4):
+            m = (len(a) - k) // 4
+            d32 = np.frombuffer(text, dtype="<i4", count=m, offset=k)
+            for c0 in range(0, m, 1 << 24):
+                d = d32[c0:c0 + (1 << 24)].astype(np.int64)
+                p = k + 4 * (c0 + np.arange(len(d), dtype=np.int64))
+                ok = (p < n) & (d == target - lo - 4 - tail - p)
+                hits.append(p[ok])
+        pos = np.sort(np.concatenate(hits)) if hits else np.array([], dtype=np.int64)
         for p in pos[:cap * 4]:
             drva = lo + int(p)
             for back in range(1, 8):
