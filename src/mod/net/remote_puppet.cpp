@@ -2179,7 +2179,7 @@ bool bend_tree(uintptr_t base, uintptr_t copy, uintptr_t own, float copy_x, floa
         const auto vt = *reinterpret_cast<const uintptr_t* const*>(obj);
         const uintptr_t p = reinterpret_cast<CanBend>(vt[0x328 / 8])(obj);
         if (!p || *reinterpret_cast<const uint8_t*>(p + 0x18) == 0) return true;
-        const uintptr_t tree = reinterpret_cast<Tree>(base + 0x491AC0)(node);
+        const uintptr_t tree = reinterpret_cast<Tree>(base + 0x5666A0)(node);
         if (!tree) return true;
         alignas(16) uint8_t out[0x40] = {};
         if (!reinterpret_cast<Point>(base + 0x68CFC0)(comp, 0, out)) return true;
@@ -2256,7 +2256,7 @@ bool rope_effect(uintptr_t copy, bool hooked) {
 bool node_world(uintptr_t base, uintptr_t node, float out[3]) {
     using Get = void*(__fastcall*)(uintptr_t, void*);
     alignas(16) uint8_t xf[0x30] = {};
-    reinterpret_cast<Get>(base + 0x26D3940)(node, xf);
+    reinterpret_cast<Get>(base + 0x2968050)(node, xf);
     float p[3];
     int16_t sx, sz;
     std::memcpy(p, xf + 0x1C, sizeof p);
@@ -2372,11 +2372,6 @@ void puppet_want_rope_bend(bool on) { g_rope_bend_wanted = on; }
 
 bool puppet_install_rope_bend() {
     if (!g_rope_bend_wanted) return false;
-    // 1.0.0.3732: two of the tree/rope calls below (2976 0x491AC0, 0x26D3940) are not
-    // ported yet (docs/research/port-3732.md), so the feature stays off instead of
-    // calling stale addresses.
-    log::warn("Puppet: tree bend / rope effect not ported to this build; off");
-    return false;
     if (g_bend_hook) return true;
     const auto base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     static const uint8_t kHead[] = {0x48, 0x8B, 0x8E, 0xC8, 0x00, 0x00, 0x00, 0xE8};  // mov rcx,[rsi+0xC8]; call

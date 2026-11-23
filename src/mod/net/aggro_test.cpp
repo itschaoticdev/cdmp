@@ -44,8 +44,8 @@ constexpr uint8_t kSetCurrentTargetHead[] = {0x48, 0x8B, 0xC4, 0x4C, 0x89, 0x48,
 // never fills for the other player's copy (it only does for actors this
 // client controls): enemies on the copy always wait and circle
 // (copia-objetivo-sin-ataques.md section 7). The entry is a 5-byte jmp into .xtls.
-constexpr uintptr_t kCheckAIBattleType = 0x22E0A30;
-constexpr uint8_t kCheckAIBattleTypeHead[] = {0xE9, 0x3B, 0xB4, 0x8A, 0x0C};
+constexpr uintptr_t kCheckAIBattleType = 0x2536D60;  // vf1 of the RTTI class (2976 0x22E0A30)
+constexpr uint8_t kCheckAIBattleTypeHead[] = {0xE9, 0xEB, 0x1E, 0x99, 0x0A};
 
 SafetyHookInline g_is_targetable;
 SafetyHookInline g_battle_type;
