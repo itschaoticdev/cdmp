@@ -30,10 +30,10 @@ constexpr uint16_t kOpCurrentTargetChangeReq = 2820;   // u32 actor | u32 target
 constexpr uint16_t kOpCurrentTargetChangedAck = 2609;  // same 18 B; u8 at +0x10 = force
 constexpr uint16_t kOpDoFrameEventReq = 3030;
 
-constexpr uintptr_t kIsTargetable = 0x22141E0;    // (target comp, actor* candidate, u8 mode)
+constexpr uintptr_t kIsTargetable = 0x245CE50;    // (target comp, actor* candidate, u8 mode)
 constexpr uint8_t kIsTargetableHead[] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74,
                                          0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x55};
-constexpr uintptr_t kSetCurrentTarget = 0x2217290;  // (comp, int* res, u32 target, u64* seq, ...)
+constexpr uintptr_t kSetCurrentTarget = 0x24606A0;  // (comp, int* res, u32 target, u64* seq, ...)
 constexpr uint8_t kSetCurrentTargetHead[] = {0x48, 0x8B, 0xC4, 0x4C, 0x89, 0x48, 0x20, 0x44,
                                              0x89, 0x40, 0x18, 0x48, 0x89, 0x50, 0x10, 0x55};
 
