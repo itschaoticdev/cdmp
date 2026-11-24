@@ -30,9 +30,17 @@ public:
 
 private:
     std::nullopt_t fail(const char* why);
+    // delta shifts every block field (sentinel included) by the same amount.
+    std::optional<CameraData> read_block(uintptr_t camera, uint32_t block_off, int32_t delta, bool strict);
+    // Looks for the block by its sentinel when the ported offsets miss.
+    bool relocate(uintptr_t camera);
     bool enabled_ = false;
     uintptr_t base_ = 0;
     std::string last_failure_;
+    uint32_t block_off_ = 0;
+    int32_t delta_ = 0;
+    uint64_t next_search_ms_ = 0;
+    int searches_ = 0;
 };
 
 struct ScreenPoint {

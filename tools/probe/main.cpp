@@ -21,6 +21,8 @@
 #include <vector>
 
 #include "common/field_time.h"
+#include "common/layout_search.h"
+#include "common/math3d.h"
 #include "common/pattern.h"
 #include "mod/game/offsets.h"
 #include "probe/process.h"
@@ -496,13 +498,16 @@ int cmd_report(const Process& p) {
     auto e_lfanew = p.read<int32_t>(base + 0x3C);
     auto ts = e_lfanew ? p.read<uint32_t>(base + *e_lfanew + 8) : std::nullopt;
     out(std::format("CDMP probe report\nPE timestamp 0x{:08X} {}\n\n", ts.value_or(0),
-                    ts == off::kPeTimestamp ? "(1.0.0.3460, the ported build)" : "(NOT the ported build)"));
+                    ts == off::kPeTimestamp ? "(1.0.0.3732, the ported build)" : "(NOT the ported build)"));
 
     out("-- function heads (hooks check these before patching)\n");
     auto head = [&](const char* what, uint64_t at, const uint8_t* want, size_t n) {
         std::vector<uint8_t> got(n);
-        const bool ok = p.read(base + at, got.data(), n) && std::memcmp(got.data(), want, n) == 0;
-        out(std::format("{:28s} exe+0x{:X} {}\n", what, at, ok ? "OK" : "DIFFERENT"));
+        const bool read = p.read(base + at, got.data(), n);
+        const bool ok = read && std::memcmp(got.data(), want, n) == 0;
+        // With the mod loaded, the functions it hooks start with its jump.
+        const bool hooked = read && (got[0] == 0xE9 || (got[0] == 0xFF && got[1] == 0x25));
+        out(std::format("{:28s} exe+0x{:X} {}\n", what, at, ok ? "OK" : hooked ? "HOOKED (cdmp is loaded: fine)" : "DIFFERENT"));
     };
     head("ClientClock", off::kClientClock, off::kClientClockHead, sizeof off::kClientClockHead);
     head("ClientPostPacket", off::kClientPostPacket, off::kClientPostPacketHead, sizeof off::kClientPostPacketHead);
@@ -536,24 +541,57 @@ int cmd_report(const Process& p) {
     out(std::format("physics local pos  ({:.2f}, {:.2f}, {:.2f})  axis X ({:.3f}, {:.3f}, {:.3f})\n", pos[0], pos[1], pos[2], ax[0], ax[1], ax[2]));
     out(std::format("local + chunk origin ({:.2f}, {:.2f}, {:.2f})\n", pos[0] + origin[0], pos[1] + origin[1], pos[2] + origin[2]));
     out(std::format("static player pos    ({:.2f}, {:.2f}, {:.2f})  (should equal the line above)\n", stat[0], stat[1], stat[2]));
+    {
+        // Same search the mod runs when the chain above is wrong.
+        auto rd = [&](uintptr_t a, void* o, size_t n) { return p.read(a, o, n); };
+        const cdmp::proto::Vec3 world{stat[0], stat[1], stat[2]}, org{origin[0], origin[1], origin[2]};
+        if (control && cdmp::math::length(world) > 1.0f) {
+            if (auto hit = cdmp::layout::find_physics(rd, {inner, control}, world, org)) {
+                std::string path = hit->root == 0 ? std::format("control+0x{:X}", off::kControl_Inner) : "control";
+                for (uint32_t o : hit->chain) path += std::format(" -> +0x{:X}", o);
+                float lp[3] = {};
+                p.read(hit->object + hit->pos_off, lp, sizeof lp);
+                out(std::format("physics search       {}, position +0x{:X}  vtable exe+0x{:X}  local ({:.2f}, {:.2f}, {:.2f})\n",
+                                path, hit->pos_off, rva(vt_of(hit->object)), lp[0], lp[1], lp[2]));
+            } else {
+                out("physics search       not found\n");
+            }
+        }
+    }
 
     out("\n-- camera, clock, minimap\n");
     const uint64_t cam = check_vt("Camera", ptr(base + off::kCameraSlot), off::kVtCamera);
     float sentinel = 0;
     if (cam) p.read(ptr(cam + off::kCamera_Block) + off::kCameraBlock_Sentinel, &sentinel, 4);
     out(std::format("camera sentinel {:.1f} {}\n", sentinel, sentinel == off::kCameraBlockSentinelValue ? "OK" : "(expected 6360000)"));
+    if (cam) {
+        auto rd = [&](uintptr_t a, void* o, size_t n) { return p.read(a, o, n); };
+        size_t shown = 0;
+        for (const auto& h : cdmp::layout::find_camera_blocks(rd, cam, off::kCameraBlockSentinelValue)) {
+            const int delta = static_cast<int>(h.sentinel_off) - static_cast<int>(off::kCameraBlock_Sentinel);
+            float f[3] = {};
+            p.read(h.block + static_cast<uint64_t>(static_cast<int64_t>(off::kCameraBlock_Forward) + delta), f, sizeof f);
+            out(std::format("camera search        block camera+0x{:X}, sentinel +0x{:X} (shift {:+d})  forward length {:.3f}\n",
+                            h.block_off, h.sentinel_off, delta, std::sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2])));
+            if (++shown == 8) break;
+        }
+        if (!shown) out("camera search        no block holds the sentinel\n");
+    }
+    // The frame clock only moves while the game renders: keep the game window
+    // focused and unpaused while this runs.
     const uint64_t ms0 = p.read<uint64_t>(base + off::kClientFrameClockMs).value_or(0);
-    Sleep(1000);
+    Sleep(2000);
     const uint64_t ms1 = p.read<uint64_t>(base + off::kClientFrameClockMs).value_or(0);
-    out(std::format("frame clock ms {} -> {} after 1 s (expect about +1000)\n", ms0, ms1));
+    out(std::format("frame clock ms {} -> {} after 2 s (expect about +2000; no change = game paused or not focused)\n", ms0, ms1));
     out(std::format("clock bias {}\n", p.read<int64_t>(base + off::kClientClockBias).value_or(0)));
     const uint64_t root = ptr(base + off::kMinimapIconRoot), alt = ptr(base + off::kMinimapIconRootAlt);
     out(std::format("minimap icon root 0x{:X} {} / alt 0x{:X}\n", root, root ? p.rtti_name(root) : "", alt));
 
     out("\n-- message ids (static Troc instances: RTTI name and opcode)\n");
     struct Msg { const char* name; uint64_t inst; uint16_t op; };
-    for (const Msg& m : {Msg{"MoveActorReq", 0x6EA6240, off::kOpMoveActorReq}, Msg{"MoveActorAck", 0x6E880C0, off::kOpMoveActorAck},
-                         Msg{"ActorLoadDataAck", 0x6E9AEF0, off::kOpActorLoadDataAck}, Msg{"SetFieldTimeReq", 0x6EA8C70, off::kOpSetFieldTimeReq}}) {
+    // Instance RVAs for 1.0.0.3732, from docs/research/troc_messages_3732.csv.
+    for (const Msg& m : {Msg{"MoveActorReq", 0x6F3A560, off::kOpMoveActorReq}, Msg{"MoveActorAck", 0x6F1C1C0, off::kOpMoveActorAck},
+                         Msg{"ActorLoadDataAck", 0x6F2F110, off::kOpActorLoadDataAck}, Msg{"SetFieldTimeReq", 0x6F3CF90, off::kOpSetFieldTimeReq}}) {
         const uint32_t op = p.read<uint32_t>(base + m.inst + off::kTroc_Opcode).value_or(0);
         out(std::format("{:28s} {} opcode {} {}\n", m.name, p.rtti_name(base + m.inst), op, op == m.op ? "OK" : "MISMATCH"));
     }

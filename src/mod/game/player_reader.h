@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "common/protocol.h"
 
@@ -40,6 +41,24 @@ public:
     const std::string& last_failure() const { return last_failure_; }
 
 private:
+    // How to get from the CharacterControl component to the player's physics
+    // transform. Starts as the ported offsets; relocate() replaces it when the
+    // game build moved them (found by matching the game's world-pos copy).
+    struct PhysicsPath {
+        bool from_control = false;     // false: start at [control + kControl_Inner]
+        std::vector<uint32_t> chain;   // pointer fields to follow
+        uint32_t pos_off = 0;          // axes X/Y/Z at -0x30/-0x20/-0x10
+    };
+    struct Transform {
+        proto::Vec3 local, ax, ay, az;
+    };
+    static constexpr float kRelocateDistance = 25.0f;  // m off the world copy = wrong object
+    static constexpr uint64_t kFarOffMs = 5'000;
+
+    std::optional<Transform> read_transform(uintptr_t control, uintptr_t inner);
+    bool relocate(uintptr_t control, uintptr_t inner, const proto::Vec3& origin,
+                  const std::optional<proto::Vec3>& world);
+    static std::string describe(const PhysicsPath& p);
     std::optional<uintptr_t> resolve_actor();
     void read_stats(uintptr_t components, PlayerSnapshot& out);
     std::nullopt_t fail(const char* why);
@@ -47,6 +66,11 @@ private:
     bool enabled_ = false;
     uintptr_t base_ = 0;
     std::string last_failure_;
+    PhysicsPath path_;
+    bool relocated_ = false;
+    uint64_t next_search_ms_ = 0;
+    int searches_ = 0;
+    uint64_t far_since_ms_ = 0;
 };
 
 }  // namespace cdmp::game

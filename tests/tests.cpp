@@ -16,6 +16,7 @@
 #include "common/equip_state.h"
 #include "common/field_time.h"
 #include "common/inject_clock.h"
+#include "common/layout_search.h"
 #include "common/learnt_file.h"
 #include "common/math3d.h"
 #include "common/pattern.h"
@@ -1331,6 +1332,7 @@ void test_enemy_zone_machine() {
 }
 
 #include "relay_tests.inc"
+#include "layout_tests.inc"
 
 }  // namespace
 
@@ -1362,6 +1364,8 @@ int main() {
     test_enemy_zone_predicate();
     test_enemy_zone_message();
     test_enemy_zone_machine();
+    test_layout_physics_search();
+    test_layout_camera_search();
     if (g_failures == 0) std::printf("All tests passed\n");
     return g_failures == 0 ? 0 : 1;
 }
