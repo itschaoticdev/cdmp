@@ -70,6 +70,7 @@ private:
     bool relocated_ = false;
     uint64_t next_search_ms_ = 0;
     int searches_ = 0;
+    bool stats_logged_ = false;
     uint64_t far_since_ms_ = 0;
 };
 

@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include <format>
+#include <string>
 
 #include "common/layout_search.h"
 #include "common/math3d.h"
@@ -200,10 +201,18 @@ void PlayerReader::read_stats(uintptr_t components, PlayerSnapshot& out) {
     if (!entries || !count || *count > off::kMaxStatEntries) return;
 
     // Look stats up by id: the entry order changes between patches.
+    bool stamina_seen = false;
+    std::string listing;
     for (uint32_t i = 0; i < *count; ++i) {
         const uintptr_t e = *entries + static_cast<uintptr_t>(i) * off::kStatEntry_Size;
         auto id = game::read<uint64_t>(e + off::kStatEntry_Id);
         if (!id) continue;
+        if (!stats_logged_) {
+            auto c = game::read<int64_t>(e + off::kStatEntry_Current);
+            auto m = game::read<int64_t>(e + off::kStatEntry_Max);
+            listing += std::format(" {}={:.1f}/{:.1f}", *id, c ? *c / 1000.0 : -1.0, m ? *m / 1000.0 : -1.0);
+        }
+        if (*id == off::kStatId_Stamina) stamina_seen = true;
         float* cur_out = nullptr;
         float* max_out = nullptr;
         if (*id == off::kStatId_Health) {
@@ -220,6 +229,14 @@ void PlayerReader::read_stats(uintptr_t components, PlayerSnapshot& out) {
         if (!cur || !max || *max <= 0 || *cur < 0 || *cur > *max) continue;
         *cur_out = static_cast<float>(*cur) / 1000.0f;
         *max_out = static_cast<float>(*max) / 1000.0f;
+    }
+    // Stat ids move between patches: if stamina is missing, list every stat
+    // once so a tester's log shows the new id (sprint, then compare values).
+    if (stamina_seen) stats_logged_ = true;  // nothing to report: stop building the list
+    if (!stats_logged_ && !stamina_seen && !listing.empty()) {
+        stats_logged_ = true;
+        log::info("Player reader: stamina stat {} not found. Stats (id=current/max):{}. Please report this line.",
+                  off::kStatId_Stamina, listing);
     }
 }
 

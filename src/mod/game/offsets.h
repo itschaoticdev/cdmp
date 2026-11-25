@@ -39,7 +39,7 @@ inline constexpr uintptr_t kVtControlledActor = 0x59961D0;  // ClientChildOnlyIn
 inline constexpr uintptr_t kVtCharacterControl = 0x59C6748;
 inline constexpr uintptr_t kVtStatusComponent = 0x599DC40;
 // No RTTI: ported by constructor `lea` refs (2/2 votes, same 3-slot shape as
-// 2976). Not verified in game; player_reader only warns on a mismatch.
+// 2976). Verified in game 11-25 (tester log: runtime search hit this vtable).
 inline constexpr uintptr_t kVtPhysicsObject = 0x614F3A8;
 
 // WorldSystem
@@ -53,7 +53,8 @@ inline constexpr uint32_t kComponents_Status = 0x20;
 inline constexpr uint32_t kComponents_CharacterControl = 0x40;
 // ClientCharacterControlActorComponent -> physics object
 inline constexpr uint32_t kControl_Inner = 0x140;
-inline constexpr uint32_t kControlInner_Physics = 0x2C0;
+// 3732: 0x2D0 (was 0x2C0 in 3460), from a tester's "physics object found at" line.
+inline constexpr uint32_t kControlInner_Physics = 0x2D0;
 // Physics object: rows are the local X/Y/Z axes, then the chunk-local position.
 inline constexpr uint32_t kPhysics_AxisX = 0x60;
 inline constexpr uint32_t kPhysics_AxisY = 0x70;
@@ -71,13 +72,15 @@ inline constexpr uint32_t kStatEntry_Id = 0x00;
 inline constexpr uint32_t kStatEntry_Current = 0x08;
 inline constexpr uint32_t kStatEntry_Max = 0x18;
 inline constexpr uint64_t kStatId_Health = 0;    // verified: regenerates, max 300
-inline constexpr uint64_t kStatId_Stamina = 22;  // verified: drains while sprinting, max 120
+// 3732: id 22 is gone (tester log 11-25: stamina 0/0); read_stats logs the list once.
+inline constexpr uint64_t kStatId_Stamina = 22;  // 2976: drains while sprinting, max 120
 inline constexpr uint32_t kMaxStatEntries = 64;  // sanity bound
 
 // Camera (CrimsonDesertTelemetry layout; vtable and sentinel checked live).
 inline constexpr uintptr_t kCameraSlot = 0x7166368;
 inline constexpr uintptr_t kVtCamera = 0x616EEB0;
-inline constexpr uint32_t kCamera_Block = 0x428;
+// 3732: 0x430 (was 0x428), from a tester's "Camera: block found at" line.
+inline constexpr uint32_t kCamera_Block = 0x430;
 inline constexpr uint32_t kCameraBlock_Position = 0x80;
 inline constexpr uint32_t kCameraBlock_Forward = 0x90;
 inline constexpr uint32_t kCameraBlock_View = 0x3E0;
