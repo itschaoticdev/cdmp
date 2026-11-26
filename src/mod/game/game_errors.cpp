@@ -15,12 +15,12 @@
 
 namespace cdmp::game {
 namespace {
-namespace off = build_3732;
+namespace off = build_3840;
 
 // Entry of the logger: arguments 10-13 on the stack ([rsp] = return address).
 // Seen at a call site (0x35AED1..0x35AF10): arg10 dword = code, arg11 dword =
 // severity, arg12 = const char* message (printf format), arg13 = first value.
-constexpr uintptr_t kErrorLogger = 0x3AB0C0;  // 2976 0x35D8D0; 3732 by caller votes (8/9)
+constexpr uintptr_t kErrorLogger = 0x3B66E0;  // 2976 0x35D8D0; 3732 by caller votes (8/9)
 constexpr uint8_t kErrorLoggerHead[] = {0x48, 0x89, 0x5C, 0x24, 0x08};  // a plain prologue on 3732 (2976: jmp into .xtls)
 constexpr uint32_t kArgCode = 0x50, kArgSeverity = 0x58, kArgText = 0x60, kArgValue = 0x68;
 constexpr int kExtraValues = 3;  // arguments 14-16 (more format values, if any)

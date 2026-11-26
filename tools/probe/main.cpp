@@ -31,7 +31,7 @@ using probe::Process;
 
 namespace {
 
-constexpr uint32_t kKnownTimestamp = cdmp::game::build_3732::kPeTimestamp;
+constexpr uint32_t kKnownTimestamp = cdmp::game::build_3840::kPeTimestamp;
 
 void usage() {
     std::puts(
@@ -475,7 +475,7 @@ int cmd_vtables(const Process& p, const Args& a) {
 // back (docs/research/port-3460.md). Also looks for the two values the
 // offline port could not find: the physics vtable and the client FieldTime.
 int cmd_report(const Process& p) {
-    namespace off = cdmp::game::build_3732;
+    namespace off = cdmp::game::build_3840;
     FILE* file = nullptr;
     if (fopen_s(&file, "cdmp_report.txt", "w") != 0) file = nullptr;
     auto out = [&](const std::string& s) {
@@ -498,7 +498,7 @@ int cmd_report(const Process& p) {
     auto e_lfanew = p.read<int32_t>(base + 0x3C);
     auto ts = e_lfanew ? p.read<uint32_t>(base + *e_lfanew + 8) : std::nullopt;
     out(std::format("CDMP probe report\nPE timestamp 0x{:08X} {}\n\n", ts.value_or(0),
-                    ts == off::kPeTimestamp ? "(1.0.0.3732, the ported build)" : "(NOT the ported build)"));
+                    ts == off::kPeTimestamp ? "(1.0.0.3840, the ported build)" : "(NOT the ported build)"));
 
     out("-- function heads (hooks check these before patching)\n");
     auto head = [&](const char* what, uint64_t at, const uint8_t* want, size_t n) {

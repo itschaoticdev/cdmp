@@ -23,17 +23,17 @@
 
 namespace cdmp::net {
 namespace {
-namespace off = game::build_3732;
+namespace off = game::build_3840;
 
 constexpr uint32_t kPuppetPlayer = 0xA010F001;
-constexpr uint16_t kOpCurrentTargetChangeReq = 2820;   // u32 actor | u32 target | u64 seq | u8 | u8 reason
-constexpr uint16_t kOpCurrentTargetChangedAck = 2609;  // same 18 B; u8 at +0x10 = force
-constexpr uint16_t kOpDoFrameEventReq = 3030;
+constexpr uint16_t kOpCurrentTargetChangeReq = 2842;   // u32 actor | u32 target | u64 seq | u8 | u8 reason
+constexpr uint16_t kOpCurrentTargetChangedAck = 2771;  // same 18 B; u8 at +0x10 = force
+constexpr uint16_t kOpDoFrameEventReq = 3090;
 
-constexpr uintptr_t kIsTargetable = 0x245CE50;    // (target comp, actor* candidate, u8 mode)
+constexpr uintptr_t kIsTargetable = 0x2539160;    // (target comp, actor* candidate, u8 mode)
 constexpr uint8_t kIsTargetableHead[] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74,
                                          0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x55};
-constexpr uintptr_t kSetCurrentTarget = 0x24606A0;  // (comp, int* res, u32 target, u64* seq, ...)
+constexpr uintptr_t kSetCurrentTarget = 0x253CE60;  // (comp, int* res, u32 target, u64* seq, ...)
 constexpr uint8_t kSetCurrentTargetHead[] = {0x48, 0x8B, 0xC4, 0x4C, 0x89, 0x48, 0x20, 0x44,
                                              0x89, 0x40, 0x18, 0x48, 0x89, 0x50, 0x10, 0x55};
 
@@ -44,8 +44,8 @@ constexpr uint8_t kSetCurrentTargetHead[] = {0x48, 0x8B, 0xC4, 0x4C, 0x89, 0x48,
 // never fills for the other player's copy (it only does for actors this
 // client controls): enemies on the copy always wait and circle
 // (copia-objetivo-sin-ataques.md section 7). The entry is a 5-byte jmp into .xtls.
-constexpr uintptr_t kCheckAIBattleType = 0x2536D60;  // vf1 of the RTTI class (2976 0x22E0A30)
-constexpr uint8_t kCheckAIBattleTypeHead[] = {0xE9, 0xEB, 0x1E, 0x99, 0x0A};
+constexpr uintptr_t kCheckAIBattleType = 0x2618180;  // vf1 of the RTTI class (2976 0x22E0A30)
+constexpr uint8_t kCheckAIBattleTypeHead[] = {0xE9, 0xBB, 0x03, 0xA1, 0x0A};
 
 SafetyHookInline g_is_targetable;
 SafetyHookInline g_battle_type;

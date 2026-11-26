@@ -35,7 +35,7 @@
 
 namespace cdmp::net {
 namespace {
-namespace off = game::build_3732;
+namespace off = game::build_3840;
 using Bytes = std::vector<uint8_t>;
 
 // Keys our own puppet uses (remote_puppet.cpp): never learn templates from those.
@@ -109,9 +109,9 @@ std::map<uint32_t, ActorSeen> g_actors;
 std::atomic<uint32_t> g_last_attack_hash{0};
 std::atomic<uint32_t> g_last_attack_target{0};
 std::set<uint32_t> g_has_hp;  // under g_actors_mutex
-constexpr uint16_t kOpVaryHPAck = 2740;
-constexpr uint16_t kOpNotifyHandleDeadAck = 2985;
-constexpr uint16_t kOpVaryStatByAccInputReq = 2565;
+constexpr uint16_t kOpVaryHPAck = 2202;
+constexpr uint16_t kOpNotifyHandleDeadAck = 3073;
+constexpr uint16_t kOpVaryStatByAccInputReq = 2971;
 constexpr uint32_t kStatHP = 0x000F4240;
 
 // World actors with hit points, from their loads and HP messages.
@@ -128,8 +128,8 @@ std::map<uint32_t, Enemy> g_enemies;  // under g_actors_mutex
 std::atomic<bool> g_damage_enabled{false};
 std::atomic<bool> g_key_alarm{false};
 uint64_t g_damage_sent = 0, g_damage_applied = 0, g_damage_unmatched = 0;
-constexpr uint16_t kOpAttackTargetAck = 2791;  // PostProcessAttackResult_AttackTargetAck
-constexpr uint16_t kOpChangedEquipByQuickSlotAck = 2440;  // 6 B: u32 player | u16 weapon set
+constexpr uint16_t kOpAttackTargetAck = 2437;  // PostProcessAttackResult_AttackTargetAck
+constexpr uint16_t kOpChangedEquipByQuickSlotAck = 2823;  // 6 B: u32 player | u16 weapon set
 
 // ---------------------------------------------------------------- writer-thread state
 game::PlayerReader g_reader;

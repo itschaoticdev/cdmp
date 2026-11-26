@@ -11,7 +11,7 @@
 #include "mod/log.h"
 
 namespace cdmp::game {
-namespace off = build_3732;
+namespace off = build_3840;
 using proto::Vec3;
 
 namespace {

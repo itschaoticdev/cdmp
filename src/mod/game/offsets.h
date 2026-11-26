@@ -5,42 +5,42 @@
 
 #include <cstdint>
 
-namespace cdmp::game::build_3732 {
+namespace cdmp::game::build_3840 {
 
-// CrimsonDesert.exe 1.0.0.3732 (Steam build 26776744). Ported OFFLINE from 3460
-// (docs/research/port-3732.md); not yet confirmed with cdmp_probe.
+// CrimsonDesert.exe 1.0.0.3840 (Steam build 26949954). Ported OFFLINE from 3460 and
+// 2976 (docs/research/port-3840.md); struct offsets carried from 3732 (tester-verified).
 // RVAs quoted in comments below are still the 2976 ones from the research.
-inline constexpr uint32_t kPeTimestamp = 0x6AFDC0CF;
+inline constexpr uint32_t kPeTimestamp = 0x6B07E5E9;
 inline constexpr uintptr_t kImageBase = 0x140000000;  // fixed, no ASLR
 
 // Static globals (RVAs).
-inline constexpr uintptr_t kWorldSystemSlot = 0x724B350;  // -> WorldSystem*
-inline constexpr uintptr_t kChunkOrigin = 0x7237470;      // vec3: world = physics local + this
-inline constexpr uintptr_t kStaticPlayerPos = 0x725A040;  // vec3 world pos (cross-check)
+inline constexpr uintptr_t kWorldSystemSlot = 0x73F0D50;  // -> WorldSystem*
+inline constexpr uintptr_t kChunkOrigin = 0x73DCAF0;      // vec3: world = physics local + this
+inline constexpr uintptr_t kStaticPlayerPos = 0x73FFE08;  // vec3 world pos (cross-check)
 // The client's game clock (game_clock.h): exe+0x1416B80 returns, on client
 // threads, [kClientFrameClockMs] + [kClientFrameClockUs] / 1000 (cached per
 // frame; checked live against our Req timestamps); handlers add the server
 // offset [kClientClockBias].
-inline constexpr uintptr_t kClientClock = 0x163CBB0;
-inline constexpr uint8_t kClientClockHead[] = {0x80, 0x3D, 0xB6, 0x95, 0xB2, 0x05, 0x00, 0x75, 0x17};
-inline constexpr uintptr_t kClientFrameClockMs = 0x71661A0;  // u64
-inline constexpr uintptr_t kClientFrameClockUs = 0x71661B0;  // u64
-inline constexpr uintptr_t kClientClockBias = 0x724B5F8;     // i64, set by ServerTimeInfoAck
+inline constexpr uintptr_t kClientClock = 0x16C5690;
+inline constexpr uint8_t kClientClockHead[] = {0x80, 0x3D, 0x96, 0x4A, 0xC4, 0x05, 0x00, 0x75, 0x17};
+inline constexpr uintptr_t kClientFrameClockMs = 0x730A170;  // u64
+inline constexpr uintptr_t kClientFrameClockUs = 0x730A178;  // u64
+inline constexpr uintptr_t kClientClockBias = 0x73F0FF8;     // i64, set by ServerTimeInfoAck
 // The client's copy of the time of day, pa::FieldTime (32 bytes; field_time.h,
 // hora-del-dia.md section 8). The server's copy is at +0x20 (0x6EA39B8).
 // Ported offline 11-09 (cd_port.py, 4/4 RIP-xref votes; server copy agrees).
-inline constexpr uintptr_t kFieldTimeClient = 0x6F37C78;
-inline constexpr uint16_t kOpSetFieldTimeReq = 2150;  // FieldTime(31) | u8 flag | u32 key
-inline constexpr uint16_t kOpSetFieldTimeAck = 3145;  // u32 key | FieldTime(31)
+inline constexpr uintptr_t kFieldTimeClient = 0x70DC128;
+inline constexpr uint16_t kOpSetFieldTimeReq = 2704;  // FieldTime(31) | u8 flag | u32 key
+inline constexpr uint16_t kOpSetFieldTimeAck = 2142;  // u32 key | FieldTime(31)
 
 // vtables (RVAs), used to validate every hop of the chain.
-inline constexpr uintptr_t kVtClientActorManager = 0x59C7A08;
-inline constexpr uintptr_t kVtControlledActor = 0x59961D0;  // ClientChildOnlyInGameActor
-inline constexpr uintptr_t kVtCharacterControl = 0x59C6748;
-inline constexpr uintptr_t kVtStatusComponent = 0x599DC40;
+inline constexpr uintptr_t kVtClientActorManager = 0x5B56000;
+inline constexpr uintptr_t kVtControlledActor = 0x5B237D0;  // ClientChildOnlyInGameActor
+inline constexpr uintptr_t kVtCharacterControl = 0x5B54DA0;
+inline constexpr uintptr_t kVtStatusComponent = 0x5B2C230;
 // No RTTI: ported by constructor `lea` refs (2/2 votes, same 3-slot shape as
 // 2976). Verified in game 11-25 (tester log: runtime search hit this vtable).
-inline constexpr uintptr_t kVtPhysicsObject = 0x614F3A8;
+inline constexpr uintptr_t kVtPhysicsObject = 0x62DC470;
 
 // WorldSystem
 inline constexpr uint32_t kWorldSystem_ActorManager = 0x30;
@@ -73,12 +73,14 @@ inline constexpr uint32_t kStatEntry_Current = 0x08;
 inline constexpr uint32_t kStatEntry_Max = 0x18;
 inline constexpr uint64_t kStatId_Health = 0;    // verified: regenerates, max 300
 // 3732: id 22 is gone (tester log 11-25: stamina 0/0); read_stats logs the list once.
-inline constexpr uint64_t kStatId_Stamina = 22;  // 2976: drains while sprinting, max 120
+// 3840: 25 is the best guess (11-25 logs: 200/200 on the further-along player,
+// 120/120 on the newer one = grows with upgrades; 27 is 120 on both). Unverified.
+inline constexpr uint64_t kStatId_Stamina = 25;  // 2976: id 22, drains while sprinting, max 120
 inline constexpr uint32_t kMaxStatEntries = 64;  // sanity bound
 
 // Camera (CrimsonDesertTelemetry layout; vtable and sentinel checked live).
-inline constexpr uintptr_t kCameraSlot = 0x7166368;
-inline constexpr uintptr_t kVtCamera = 0x616EEB0;
+inline constexpr uintptr_t kCameraSlot = 0x730A338;
+inline constexpr uintptr_t kVtCamera = 0x62FBAD8;
 // 3732: 0x430 (was 0x428), from a tester's "Camera: block found at" line.
 inline constexpr uint32_t kCamera_Block = 0x430;
 inline constexpr uint32_t kCameraBlock_Position = 0x80;
@@ -90,31 +92,31 @@ inline constexpr float kCameraBlockSentinelValue = 6360000.0f;
 
 // Internal client/server messages (docs/research/troc-sintesis.md). Wire
 // packet: u16 opcode | u8 slot | u16 payload_len | payload.
-inline constexpr uintptr_t kClientPostPacket = 0x3A9D70;    // client -> server bytes
-inline constexpr uintptr_t kClientOnRecvPacket = 0x3AA100;  // server -> client bytes
+inline constexpr uintptr_t kClientPostPacket = 0x3B52C0;    // client -> server bytes
+inline constexpr uintptr_t kClientOnRecvPacket = 0x3B5650;  // server -> client bytes
 // First bytes of both functions, checked before hooking (from the AOBs).
 inline constexpr uint8_t kClientPostPacketHead[] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x4C, 0x89, 0x4C, 0x24, 0x20, 0x55, 0x56, 0x57, 0x41};
 inline constexpr uint8_t kClientOnRecvPacketHead[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24};
 // At both entries: r9 = packet, [rsp+0x28] = u16 size; PostPacket r8d = session.
 inline constexpr uint32_t kHookArgSizeStackOffset = 0x28;
 // Static Troc handler instances (0x90 bytes each) live in this range.
-inline constexpr uintptr_t kTrocInstancesBegin = 0x6F1AE10;
-inline constexpr uintptr_t kTrocInstancesEnd = 0x6F4E840;
+inline constexpr uintptr_t kTrocInstancesBegin = 0x70BED10;
+inline constexpr uintptr_t kTrocInstancesEnd = 0x70F3050;
 inline constexpr uint32_t kTroc_Kind = 0x08;    // u32: 4 Req, 1 Ack/Nak, 2 auth, 0x7FFFFFFE internal
 inline constexpr uint32_t kTroc_Opcode = 0x0C;  // u16
 // Opcodes of this build (verified against the Troc table / RTTI at runtime).
 inline constexpr uint16_t kOpActorLoadDataAck = 2005;
-inline constexpr uint16_t kOpRemoveActorAck = 3037;
-inline constexpr uint16_t kOpMoveActorReq = 2790;
-inline constexpr uint16_t kOpMoveActorAck = 3008;
-inline constexpr uint16_t kOpStartActionReq = 2431;
-inline constexpr uint16_t kOpStartActionAck = 2800;
-inline constexpr uint16_t kOpRotateActorReq = 2296;
-inline constexpr uint16_t kOpRotateActorAck = 2664;
-inline constexpr uint16_t kOpUpdateWallUpDataAck = 2939;
-inline constexpr uint16_t kOpUnequipItemAck = 3155;
-inline constexpr uint16_t kOpOtherEquipItemAck = 2426;
-inline constexpr uint16_t kOpOtherUnequipItemAck = 2565;  // u32 key | u16 slot | u32 serial
+inline constexpr uint16_t kOpRemoveActorAck = 2157;
+inline constexpr uint16_t kOpMoveActorReq = 2561;
+inline constexpr uint16_t kOpMoveActorAck = 2890;
+inline constexpr uint16_t kOpStartActionReq = 2221;
+inline constexpr uint16_t kOpStartActionAck = 2408;
+inline constexpr uint16_t kOpRotateActorReq = 2582;
+inline constexpr uint16_t kOpRotateActorAck = 2198;
+inline constexpr uint16_t kOpUpdateWallUpDataAck = 2652;
+inline constexpr uint16_t kOpUnequipItemAck = 2622;
+inline constexpr uint16_t kOpOtherEquipItemAck = 2725;
+inline constexpr uint16_t kOpOtherUnequipItemAck = 2792;  // u32 key | u16 slot | u32 serial
 
 // Map pins (docs/research/mapa-minimapa.md §1; capture cdmp_packets_20261003-211630):
 //   CreateOrChangePinMarkerAck (6 + 22 N B): 04 | u32 owner | u8 group |
@@ -127,8 +129,8 @@ inline constexpr uint16_t kOpOtherUnequipItemAck = 2565;  // u32 key | u16 slot 
 // far outside its range. Re-sending an id moves the icon but not the stored
 // position (the UI rebuilds from it), so a move is Remove + Create. Pins
 // created by an Ack alone never reach the server, nor the save.
-inline constexpr uint16_t kOpCreateOrChangePinMarkerAck = 2267;
-inline constexpr uint16_t kOpRemovePinMarkerAck = 2579;
+inline constexpr uint16_t kOpCreateOrChangePinMarkerAck = 2350;
+inline constexpr uint16_t kOpRemovePinMarkerAck = 2482;
 inline constexpr uint64_t kCoopPinId = 0x7FDD00000000F001ull;
 inline constexpr uint8_t kPinGroupNormal = 0;
 inline constexpr uint8_t kPinShapeCount = 14, kPinColourCount = 15;
@@ -136,10 +138,10 @@ inline constexpr uint8_t kPinShapeCount = 14, kPinColourCount = 15;
 // Minimap icon of an actor (mapa-minimapa.md §2, §4): 0x9E89C0(minimap
 // component, u16* icon, u16* sub icon, u8* a, u8* b), void; component +0x08 =
 // actor. Icon keys come from a table of u16 at [[[[exe+root]]+8]+0x270].
-inline constexpr uintptr_t kMinimapIconDecide = 0xB25350;
+inline constexpr uintptr_t kMinimapIconDecide = 0xB6DE40;
 inline constexpr uint8_t kMinimapIconDecideHead[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7C, 0x24, 0x18, 0x55};
-inline constexpr uintptr_t kMinimapIconRoot = 0x724B6E8;
-inline constexpr uintptr_t kMinimapIconRootAlt = 0x724B6F0;  // used under a TLS flag
+inline constexpr uintptr_t kMinimapIconRoot = 0x73F10E8;
+inline constexpr uintptr_t kMinimapIconRootAlt = 0x73F10F0;  // used under a TLS flag
 inline constexpr int kMinimapIconPlayerArrow = 0x126;       // the local player's arrow
 inline constexpr int kMinimapIconCompanion = 0x100;         // a mercenary in our clan
 inline constexpr int kMinimapIconOutlinedArrow = 0x124;     // key 23, the co-op default
@@ -151,7 +153,7 @@ inline constexpr uint32_t kActor_Key = 0x60;                 // u32 actor key
 // so its arguments tell us the item ids, which no packet to our own client
 // carries. rcx = server actor (u32 key at +0x60), r8 = u32* serial,
 // r9 = vector {item* data, u32 count at +8}, items {u32 itemKey, u16 slot, pad} (8 B).
-inline constexpr uintptr_t kServerOtherEquipWriter = 0x2CE0240;
+inline constexpr uintptr_t kServerOtherEquipWriter = 0x2E1D4A0;
 inline constexpr uint8_t kServerOtherEquipWriterHead[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x4C, 0x89, 0x4C,
                                                           0x24, 0x20, 0x4C, 0x89, 0x44, 0x24, 0x18, 0x55};
 inline constexpr uint32_t kServerActor_Key = 0x60;
@@ -161,7 +163,7 @@ inline constexpr uint32_t kServerActor_Key = 0x60;
 // (combate-coop.md §3 and annex). rcx = server actor, r8 = FrameEventAccessor:
 // u8 type +0x08 (0 = action), u8 slot +0x10, u32 action hash +0x14,
 // u16 id +0x18, u32 frame-event index +0x1C.
-inline constexpr uint16_t kOpChangeDockingSocketByFrameEventAck = 2155;
+inline constexpr uint16_t kOpChangeDockingSocketByFrameEventAck = 2721;
 
 // Messages the MMO server sent to every nearby player ("ToNear"), the subject
 // included, so the sender's own client receives exactly the bytes the others
@@ -202,13 +204,13 @@ inline constexpr RelayedAck kRelayedAcks[] = {
     // 0xB5B710; arbol-cuerda-fallo.md).
     {2395, true, 97, {}, true, {0x0A}},     // RemoteCatchResultAck
 };
-inline constexpr uint16_t kOpRemoteCatchResultAck = 2701;
+inline constexpr uint16_t kOpRemoteCatchResultAck = 2705;
 inline constexpr size_t kRemoteCatchSceneId = 0x0E;  // 16 B
 // UpdateOnDemandGimmickAck: 04 | u32 player | u8 1 spawned / 0 unspawned |
 // scene id 16 B. A tree becomes a gimmick (an actor) only near each player,
 // on each PC on its own (interacciones-mundo.md §1.1).
-inline constexpr uint16_t kOpUpdateOnDemandGimmickAck = 2367;
-inline constexpr uintptr_t kServerDockingWriter = 0x2C48680;
+inline constexpr uint16_t kOpUpdateOnDemandGimmickAck = 2372;
+inline constexpr uintptr_t kServerDockingWriter = 0x2D80830;
 inline constexpr uint8_t kServerDockingWriterHead[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x55, 0x56, 0x57,
                                                        0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57};
 // ActorLoadDataAck: Transform at the end (position, rotation quaternion, scale).
@@ -219,14 +221,14 @@ inline constexpr size_t kLoadRotationFromEnd = 142;
 inline constexpr uint32_t kControl_MoveController = 0xC8;  // X = [CC+0xC8]
 inline constexpr uint32_t kMoveController_Method = 0xF0;   // u8 active movement method
 inline constexpr uint32_t kMoveController_WallUp = 0x120;  // WallUpMovementMethod*
-inline constexpr uintptr_t kVtWallUpMovementMethod = 0x59A7508;
+inline constexpr uintptr_t kVtWallUpMovementMethod = 0x5B359B0;
 inline constexpr uint8_t kMoveMethodWallUp = 5;
 inline constexpr uint32_t kControl_WallData = 0xD8;        // D = [CC+0xD8]
 
 // PointClimbMovementMethod::Enter (vf7). Fails on a remote copy (its climb
 // sensor only runs for the local character), which freezes the remote copy for
 // the whole wall climb (build/research/pointclimb/informe-pointclimb.md).
-inline constexpr uintptr_t kPointClimbEnter = 0x78DA40;
+inline constexpr uintptr_t kPointClimbEnter = 0x7C7280;
 inline constexpr uint8_t kPointClimbEnterHead[] = {0x4C, 0x8B, 0xDC, 0x49, 0x89, 0x5B, 0x10, 0x49, 0x89, 0x6B, 0x18, 0x49, 0x89, 0x73, 0x20, 0x57};
 // RideOn / RideOff movement methods (6 / 7): their Enter needs the rider<->
 // mount link in the vehicle component, which a remote copy never gets
@@ -238,7 +240,7 @@ inline constexpr uint8_t kPointClimbEnterHead[] = {0x4C, 0x8B, 0xDC, 0x49, 0x89,
 // which a network-driven horse copy has until its first action: crash at
 // +0x76 reading 0x10. Nothing to advance -> return 0 (as the caller does when
 // the rate is <= 0).
-inline constexpr uintptr_t kActionLayerAdvance = 0x21BF2B0;
+inline constexpr uintptr_t kActionLayerAdvance = 0x227AB10;
 inline constexpr uint8_t kActionLayerAdvanceHead[] = {0x48, 0x8B, 0xC4, 0x57, 0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00, 0xC5, 0xF8, 0x29, 0x78, 0xD8};
 // Advances both action layers of a character-control component
 // (rcx = component; +0x08 actor; layers at +0x88 / +0x90, each with the
@@ -248,13 +250,13 @@ inline constexpr uint8_t kActionLayerAdvanceHead[] = {0x48, 0x8B, 0xC4, 0x57, 0x
 // caller's defaults when it is skipped. A layer with a chart and no playback
 // crashes more than one function below it (live test 2026-10-03: exe+0x1F63FE6
 // and exe+0x232D5FF), so the puppet's update is skipped in that state.
-inline constexpr uintptr_t kActionLayersAdvance = 0x258EA30;
+inline constexpr uintptr_t kActionLayersAdvance = 0x2670B90;
 inline constexpr uint8_t kActionLayersAdvanceHead[] = {0x48, 0x8B, 0xC4, 0x41, 0x55, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x68, 0xC5, 0xF8, 0x29, 0x70, 0xC8};
 inline constexpr uint32_t kControl_Layer0 = 0x88;
 inline constexpr uint32_t kLayer_Playback = 0x18;
 inline constexpr uint32_t kLayer_Chart = 0x110;
-inline constexpr uintptr_t kRideOnEnter = 0x77C8C0;
-inline constexpr uintptr_t kRideOffEnter = 0x77D890;
+inline constexpr uintptr_t kRideOnEnter = 0x7B6060;
+inline constexpr uintptr_t kRideOffEnter = 0x7B7030;
 inline constexpr uint8_t kRideEnterHead[] = {0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x10, 0x48,
                                              0x89, 0x70, 0x18, 0x55, 0x57, 0x41, 0x54, 0x41};
 inline constexpr uint8_t kLoadKindMount = 5;  // ActorLoadDataAck +0x0D: 1 player, 5 mount
@@ -268,4 +270,4 @@ inline constexpr size_t kLoadPositionFromEnd = 154;
 inline constexpr float kLoadingParkHeight = 1000.0f;
 inline constexpr float kLoadingParkRadius = 5.0f;
 
-}  // namespace cdmp::game::build_3732
+}  // namespace cdmp::game::build_3840

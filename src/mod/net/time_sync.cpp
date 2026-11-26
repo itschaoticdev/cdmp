@@ -19,7 +19,7 @@
 
 namespace cdmp::net {
 namespace {
-namespace off = game::build_3732;
+namespace off = game::build_3840;
 
 constexpr uint32_t kSendEveryMs = 5000;
 // Below this difference nothing is done: ~2 game minutes, 10 real seconds.
