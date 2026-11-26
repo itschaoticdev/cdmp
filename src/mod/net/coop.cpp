@@ -91,6 +91,7 @@ void CoopLink::update(const std::optional<proto::Vec3>& local_pos, const proto::
     // (pendiente-robustez.md: 117 flickers in the logs).
     if (local_pos) local_seen_ms_ = now_ms ? now_ms : 1;
     local_in_world_ = local_pos.has_value() || (local_seen_ms_ && now_ms - local_seen_ms_ < kInWorldGraceMs);
+    capture_note_in_world(local_in_world_);
     if (local_in_world_ && !held_enemy_spawns_.empty()) {
         log::info("Co-op: back in the world: loading {} held enemy copies", held_enemy_spawns_.size());
         while (!held_enemy_spawns_.empty()) {

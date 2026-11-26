@@ -14,6 +14,7 @@
 #include <safetyhook.hpp>
 
 #include "common/equip_state.h"
+#include "common/load_transform.h"
 #include "mod/game/actor_lookup.h"
 #include "mod/game/game_clock.h"
 #include "mod/game/offsets.h"
@@ -83,6 +84,19 @@ uint32_t g_horse_key = 0;
 std::atomic<uint32_t> g_generation{0};
 uint32_t g_spawn_counter = 0;
 EventSink g_sink;
+// Whether our player was in the world (not on a loading screen) when g_user
+// was captured. The first character load of a session arrives while the
+// actor is still parked; sending that one crashed the other player's game
+// (live test 2026-11-25, 1.0.0.3732). g_mutex.
+bool g_user_in_world = false;
+size_t g_user_pos_from_end = 0;  // where its Transform is (0 = not found)
+uint32_t g_waiting_logged_gen = 0;
+std::atomic<bool> g_local_in_world{false};
+std::atomic<uint64_t> g_in_world_since_ms{0};
+// A template from before we were in the world is still sent after this long
+// in the world, if it places us near where we are (no newer load came).
+constexpr uint64_t kPreWorldTemplateAfterMs = 30000;
+constexpr float kPreWorldTemplateMaxDist = 300.0f;
 
 // ---------------------------------------------------------------- combat tests
 // The client runs the AI and reports NPC movement with MoveActorReq.
@@ -647,22 +661,40 @@ void capture_observe_s2c(const uint8_t* packet, size_t size) {
         if (!keys::is_class(actor, keys::kClassPlayer)) return;  // horse, mercenaries: also user-owned
         // The first load of a session is a default character parked at
         // (0, 1000, 0) (apariencia-estado-coop.md §3): not the player's look.
-        if (payload.size() > off::kLoadPositionFromEnd) {
-            float p[3];
-            std::memcpy(p, payload.data() + payload.size() - off::kLoadPositionFromEnd, sizeof p);
-            if (std::fabs(p[0]) < 1.0f && std::fabs(p[1] - off::kLoadingParkHeight) < 1.0f &&
-                std::fabs(p[2]) < 1.0f) {
-                log::info("Capture: ignoring the default character load at (0, 1000, 0)");
-                return;
+        const auto tf = load_transform::find(payload);
+        float p[3] = {NAN, NAN, NAN};
+        if (tf) load_transform::read_pos(payload, tf->pos_from_end, p);
+        if (tf && std::fabs(p[0]) < off::kLoadingParkRadius &&
+            std::fabs(p[1] - off::kLoadingParkHeight) < off::kLoadingParkRadius &&
+            std::fabs(p[2]) < off::kLoadingParkRadius) {
+            log::info("Capture: ignoring the default character load at (0, 1000, 0)");
+            return;
+        }
+        static size_t logged_from_end = static_cast<size_t>(-1);
+        const size_t from_end = tf ? tf->pos_from_end : 0;
+        if (from_end != logged_from_end) {
+            logged_from_end = from_end;
+            if (!tf) {
+                log::warn("Capture: no Transform found in our character load ({} bytes). Please report this line.",
+                          payload.size());
+            } else if (!tf->known) {
+                log::warn("Capture: our character's Transform moved to {} bytes before the end (was {}), "
+                          "position ({:.1f}, {:.1f}, {:.1f}). Please report this line.",
+                          tf->pos_from_end, load_transform::kKnownPosFromEnd, p[0], p[1], p[2]);
+            } else {
+                log::info("Capture: character Transform at the known offset, position ({:.1f}, {:.1f}, {:.1f})",
+                          p[0], p[1], p[2]);
             }
         }
+        g_user_in_world = g_local_in_world.load();
+        g_user_pos_from_end = from_end;
         g_user = std::move(payload);
         g_user_key = key;
         g_player_key = actor;
         g_equip_key = actor;
         g_body.clear();  // a body seen before this user packet belongs to an older load
-        log::info("Capture: user template (user 0x{:08X}, player 0x{:08X}, {} bytes)", key, actor,
-                  g_user.size());
+        log::info("Capture: user template (user 0x{:08X}, player 0x{:08X}, {} bytes, {})", key, actor,
+                  g_user.size(), g_user_in_world ? "in the world" : "while loading");
     } else if (keys::is_class(key, keys::kClassWorld) && g_player_key && g_body.empty() &&
                contains_u32(payload, g_player_key)) {
         // Many NPC loads also reference the player key (targets, relations), so
@@ -802,6 +834,28 @@ void capture_set_sink(EventSink sink) {
 std::optional<proto::SpawnInfo> capture_spawn_info(const proto::Vec3& pos, const proto::Quat& rot) {
     std::lock_guard lock(g_mutex);
     if (g_user.empty() || g_body.empty()) return std::nullopt;
+    if (!g_user_pos_from_end) return std::nullopt;  // no Transform to place the copy with
+    if (!g_user_in_world) {
+        // Captured on the loading screen: wait for the load that follows in
+        // the world. Fall back to it only after a while, and only if it
+        // places us where we are.
+        const uint64_t since = g_in_world_since_ms.load();
+        float tp[3];
+        const bool close_by = load_transform::read_pos(g_user, g_user_pos_from_end, tp) &&
+                          std::hypot(tp[0] - pos.x, tp[2] - pos.z) < kPreWorldTemplateMaxDist;
+        const bool waited = g_local_in_world.load() && since && steady_ms() - since >= kPreWorldTemplateAfterMs;
+        if (!(waited && close_by)) {
+            if (g_waiting_logged_gen != g_generation.load()) {
+                g_waiting_logged_gen = g_generation.load();
+                log::info("Co-op: our character load came during the loading screen; waiting for the next one "
+                          "before sending it");
+            }
+            return std::nullopt;
+        }
+        log::info("Co-op: no new character load after {} s in the world; sending the earlier one",
+                  kPreWorldTemplateAfterMs / 1000);
+        g_user_in_world = true;
+    }
     proto::SpawnInfo info;
     info.generation = ++g_spawn_counter;
     info.user_key = g_user_key;
@@ -828,6 +882,12 @@ std::optional<proto::SpawnInfo> capture_spawn_info(const proto::Vec3& pos, const
 }
 
 uint32_t capture_template_generation() { return g_generation.load(); }
+
+void capture_note_in_world(bool in_world) {
+    const bool was = g_local_in_world.exchange(in_world);
+    if (in_world && !was) g_in_world_since_ms = steady_ms();
+    if (!in_world) g_in_world_since_ms = 0;
+}
 
 uint32_t capture_horse_present() {
     std::lock_guard lock(g_mutex);

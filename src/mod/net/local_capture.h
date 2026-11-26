@@ -45,6 +45,9 @@ std::optional<proto::SpawnInfo> capture_spawn_info(const proto::Vec3& pos, const
 bool capture_install_equip_hook();
 // Changes whenever new templates are captured (a save or area was loaded).
 uint32_t capture_template_generation();
+// Whether our player is in the world now (not loading); character loads
+// captured while loading are not sent (they crashed the other game).
+void capture_note_in_world(bool in_world);
 // Our horse's key if its template is captured and it is in the world now
 // (what capture_spawn_info would send), else 0.
 uint32_t capture_horse_present();

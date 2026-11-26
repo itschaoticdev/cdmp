@@ -21,6 +21,7 @@
 
 #include "common/equip_state.h"
 #include "common/inject_clock.h"
+#include "common/load_transform.h"
 #include "mod/game/actor_lookup.h"
 #include "mod/game/game_clock.h"
 #include "mod/game/offsets.h"
@@ -1091,11 +1092,32 @@ bool puppet_spawn(const proto::SpawnInfo& info) {
     const float pos[3] = {info.pos.x + g_offset_x, info.pos.y, info.pos.z};
     const float rot[4] = {info.rot.x, info.rot.y, info.rot.z, info.rot.w};
     const bool rot_ok = std::fabs(rot[0] * rot[0] + rot[1] * rot[1] + rot[2] * rot[2] + rot[3] * rot[3] - 1.0f) < 0.05f;
-    for (auto* v : {&user, &body}) {
-        const size_t pos_off = v->size() - off::kLoadPositionFromEnd;
-        std::memcpy(v->data() + pos_off, pos, sizeof pos);
+    // The Transform is found by its shape, not a fixed offset: a patch that
+    // moved it made us write the position into other fields (1.0.0.3732).
+    size_t pos_offs[2] = {0, 0};
+    for (int i = 0; i < 2; ++i) {
+        const Bytes& v = i == 0 ? user : body;
+        const auto tf = load_transform::find(v);
+        if (!tf && i == 1) continue;  // the body's copy of the user record is cut off below anyway
+        if (!tf) {
+            std::lock_guard lock(g_mutex);
+            g_spawned = false;
+            log::warn("Puppet: no Transform found in the other player's {} packet ({} bytes); not loaded. "
+                      "Please report this line.", i == 0 ? "user" : "body", v.size());
+            return false;
+        }
+        if (!tf->known) {
+            log::warn("Puppet: Transform in the {} packet is {} bytes before the end (was {})",
+                      i == 0 ? "user" : "body", tf->pos_from_end, load_transform::kKnownPosFromEnd);
+        }
+        pos_offs[i] = v.size() - tf->pos_from_end;
+    }
+    for (int i = 0; i < 2; ++i) {
+        Bytes& v = i == 0 ? user : body;
+        if (!pos_offs[i]) continue;
+        std::memcpy(v.data() + pos_offs[i], pos, sizeof pos);
         // Facing: the quaternion right after the position (Transform).
-        if (rot_ok) std::memcpy(v->data() + v->size() - off::kLoadRotationFromEnd, rot, sizeof rot);
+        if (rot_ok) std::memcpy(v.data() + pos_offs[i] + load_transform::kRotFromPos, rot, sizeof rot);
     }
     // The body packet is [u16 len][record]... : its own record, then a byte
     // copy of the user packet. For the real player the client skips the

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(CrimsonDesertMultiplayer VERSION 0.3.2 LANGUAGES CXX)
+project(CrimsonDesertMultiplayer VERSION 0.3.3 LANGUAGES CXX)
 
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Build with MSVC for x64 (the game is 64-bit Windows only). Use scripts/build.ps1.")
