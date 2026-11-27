@@ -3,6 +3,7 @@
 // verified live with cdmp_probe; see docs/research/hallazgos-en-vivo.md.
 // On any other build the mod refuses to read game memory.
 
+#include <cstddef>
 #include <cstdint>
 
 namespace cdmp::game::build_3840 {
@@ -117,6 +118,50 @@ inline constexpr uint16_t kOpUpdateWallUpDataAck = 2652;
 inline constexpr uint16_t kOpUnequipItemAck = 2622;
 inline constexpr uint16_t kOpOtherEquipItemAck = 2725;
 inline constexpr uint16_t kOpOtherUnequipItemAck = 2792;  // u32 key | u16 slot | u32 serial
+
+// Message layouts of this build. Measured by running the game's own Troc
+// parsers (vf2) in an emulator on both builds and recording every field read
+// (tools/port/troc_layout.py; table in docs/research/port-3840.md). In
+// brackets: 1.0.0.2976, which the 3460/3732 ports had still assumed, so
+// every MoveActorReq/StartActionReq was dropped as "wrong size" and the
+// other player's copy never moved.
+// MoveActorReq: 0xEE head + 10 x 28-byte history; only the head is sent.
+inline constexpr size_t kMoveReqSize = 518;    // [514]
+inline constexpr size_t kMoveHead = 0xEE;      // [0xEA]
+inline constexpr size_t kMoveAckSplit = 0xE2;  // Ack = head[0:split] + u8 0 + head[split:]  [0xDE]
+inline constexpr size_t kMoveAckSize = kMoveHead + 1;  // 239 [235]
+inline constexpr size_t kMoveTs = 0xD4;        // u64 game ms, same offset in the Ack  [0xD5]
+inline constexpr size_t kMoveParent = 0x44;    // u64 parent (horse when riding), all-FF = none  [0x8C]
+inline constexpr size_t kMoveWorld = 0x8C;     // Path.world: pos vec3 + quat (the horse when riding)  [0x94]
+inline constexpr size_t kMoveWorldLen = 0x44;  // Path.world .. end of Path (zeroed when no parent)  [0x40]
+// Positions (pos +0x04, quat +0x10, Path.local +0x4C / +0x58) did not move.
+// StartActionReq = StartActionAck size; the Req's last u8 moves to Ack +0x8E,
+// so every Req offset >= 0x8E is one byte later in the Ack.
+inline constexpr size_t kActionSize = 729;     // [725]
+inline constexpr size_t kActionForce = 0x2D8;  // [0x2D4]
+inline constexpr size_t kActionParent = 0xCE;  // u64 Req  [0x116]
+inline constexpr size_t kActionTs = 0x15E;     // u64 Req  [0x15F]
+inline constexpr size_t kActionKey = 0x16C;    // u32 Req, may name another actor  [0x168]
+inline constexpr size_t kActionTarget = 0x170; // u32 Req, action target  [0x16C]
+// [Req 0xAA u32 key: gone, 0xAA is a vec3 now]
+// RotateActorReq 176 / Ack 177: unchanged.
+// UpdateWallUpDataAck: 135 [132] (3 u8 at 0x55 became u32 + 2 u8). Our copy
+// is read from the client's memory with 2976 struct offsets: off until a
+// tester's capture confirms the new ones.
+inline constexpr size_t kWallUpAckSize = 135;
+// ChangeDockingSocketByFrameEventAck: 17 [16] (u8 appended). Relay is off.
+inline constexpr size_t kDockingAckSize = 17;
+// ApplyActionRestrictionAck: 69 [77] (u64 +0x1C became u32 and one u32 pair
+// went; the instance/hash offsets can't be told apart from types alone, the
+// source key is +0x41 [0x49]). The stagger relay only uses 77-byte templates,
+// so it stays off on this build until a capture shows the new offsets.
+inline constexpr size_t kAarSize = 69;
+// The shape every layout above must keep (a wrong port fails to build).
+static_assert(kMoveHead + 10 * 28 == kMoveReqSize, "Move = head + 10 x 28 history");
+static_assert(kMoveTs + 8 <= kMoveAckSplit && kMoveAckSplit < kMoveHead, "Move ts before the Ack's extra byte");
+static_assert(kMoveParent + 8 <= 0x4C && kMoveWorld + kMoveWorldLen <= kMoveTs, "Move parent / Path.world");
+static_assert(kActionForce == kActionSize - 1, "StartAction force flag is the Req's last byte");
+static_assert(kActionParent >= 0x8E && kActionTarget + 4 <= kActionForce, "StartAction fields after the Ack's byte");
 
 // Map pins (docs/research/mapa-minimapa.md §1; capture cdmp_packets_20261003-211630):
 //   CreateOrChangePinMarkerAck (6 + 22 N B): 04 | u32 owner | u8 group |

@@ -28,7 +28,9 @@ inline constexpr uint32_t kMagic = 0x504D4443;  // bytes "CDMP"
 // SpawnInfo keeps a removal for each slot the sender's template had filled
 // (equip_state.h); a v6 peer would lose them. 8: TimeSync events. 9: EnemyZone
 // (the guest hides its own enemies near the host, who relays them all).
-inline constexpr uint16_t kVersion = 9;
+// 10: Move/StartAction payloads in the 1.0.0.3840 layout (518/729 B; a v9
+// peer sends none it could not be told apart from).
+inline constexpr uint16_t kVersion = 10;
 // Hello and Welcome start the same in every version from 5 (name, then the
 // rest), so a peer with another version is recognised and reported instead
 // of being ignored in silence.

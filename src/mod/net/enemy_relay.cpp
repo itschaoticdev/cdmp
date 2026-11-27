@@ -16,6 +16,7 @@
 #include "common/enemy_load.h"
 #include "common/keys.h"
 #include "mod/game/actor_lookup.h"
+#include "mod/game/offsets.h"
 #include "mod/log.h"
 #include "mod/net/local_capture.h"
 #include "mod/net/loot_twin.h"
@@ -23,6 +24,7 @@
 #include "mod/net/remote_puppet.h"
 
 namespace cdmp::net {
+namespace off = game::build_3840;
 namespace {
 
 using Bytes = std::vector<uint8_t>;
@@ -54,7 +56,7 @@ constexpr uint16_t kOpApplyActionRestrictionAck = 2267;
 constexpr size_t kRotateActorReqSize = 176;
 constexpr uint64_t kPosIntervalMs = 66;  // ~15 Hz
 constexpr uint64_t kPosKeepAliveMs = 900;  // the remote buffer wants a sample every <= 1 s
-constexpr size_t kStartActionReqSize = 725;
+constexpr size_t kStartActionReqSize = off::kActionSize;  // layout: game/offsets.h
 constexpr uint32_t kPuppetUser = 0x9010F001;
 constexpr uint32_t kPuppetPlayer = 0xA010F001;
 constexpr float kPickRadius = 40.0f;
@@ -125,13 +127,13 @@ struct Sampled {
 };
 constexpr float kMaxSpeed = 30.0f;  // m/s; faster is a bogus read (see below)
 
-// The parent (u32 key) in an enemy's last StartActionReq (+0x116 Path.parent):
+// The parent (u32 key) in an enemy's last StartActionReq (off::kActionParent):
 // during a finisher the enemy hangs from the player who does it.
 uint32_t last_action_parent(uint32_t key) {
     std::lock_guard lock(g_mutex);
     auto a = g_actions.find(key);
-    if (a == g_actions.end() || a->second.empty() || a->second.back().size() < 0x11A) return 0;
-    return u32_at(a->second.back().data() + 0x116);
+    if (a == g_actions.end() || a->second.empty() || a->second.back().size() < off::kActionParent + 4) return 0;
+    return u32_at(a->second.back().data() + off::kActionParent);
 }
 std::map<uint32_t, Sampled> g_sampled;  // world NPC key -> last position sent (network thread)
 uint64_t g_last_sample_ms = 0;
@@ -543,7 +545,9 @@ void map_field_locked(Bytes& v, size_t off, bool parent64) {
 uint64_t g_dropped_messages = 0;
 bool map_message_locked(uint16_t op, Bytes& v, uint32_t self) {
     switch (op) {
-        case kOpStartActionReq: map_field_locked(v, 0x116, true), map_field_locked(v, 0x16C, false); break;
+        case kOpStartActionReq:
+            map_field_locked(v, off::kActionParent, true), map_field_locked(v, off::kActionTarget, false);
+            break;
         case kOpRotateActorReq: map_field_locked(v, 0x54, true); break;
         case kOpVaryHPAck: map_field_locked(v, 0x54, false); break;
         case kOpNotifyHandleDeadAck: map_field_locked(v, 0x04, false); break;
@@ -1555,9 +1559,9 @@ void no_parent(Bytes& v, size_t off) {
 void scrub_message(uint16_t op, Bytes& v, uint32_t copy, uint32_t own) {
     switch (op) {
         case kOpStartActionReq:
-            no_parent(v, 0x116);
-            scrub_field(v, 0x16C, copy, own);
-            scrub_key_shaped(v, 0xAA, copy, own);
+            no_parent(v, off::kActionParent);
+            scrub_field(v, off::kActionTarget, copy, own);
+            scrub_key_shaped(v, off::kActionKey, copy, own);
             break;
         case kOpRotateActorReq: no_parent(v, 0x54); break;
         case kOpVaryHPAck: scrub_field(v, 0x54, copy, own); break;
@@ -1647,7 +1651,7 @@ bool check_spawn(uint32_t copy, const Bytes& spawn, Bytes& load, Bytes& action, 
         for (size_t i = 4; i + 4 <= one.size(); ++i) {
             const uint32_t k = u32_at(one.data() + i);
             if (!keys::is_actor_key(k) || k == copy || is_network_key(k)) continue;
-            if (k == own && (i == 0x16C || i == 0xAA)) continue;
+            if (k == own && (i == off::kActionTarget || i == off::kActionKey)) continue;
             if (k == own || (own_user && k == own_user) || game::find_actor(k)) {
                 why = std::format("its action {} names our actor 0x{:08X} at +{}", at / kStartActionReqSize, k, i);
                 return false;

@@ -44,13 +44,14 @@ constexpr uint32_t kPuppetPlayer = 0xA010F001;
 constexpr uint32_t kPuppetBody = 0xB010F001;
 constexpr uint32_t kPuppetHorse = 0xB010F002;
 
-constexpr size_t kMoveReqSize = 514;
-constexpr size_t kMoveWireSize = 0xEA;  // what is sent of it (see emit)
-constexpr size_t kStartActionReqSize = 725;
+// Layouts of this build: game/offsets.h.
+constexpr size_t kMoveReqSize = off::kMoveReqSize;
+constexpr size_t kMoveWireSize = off::kMoveHead;  // what is sent of it (see emit)
+constexpr size_t kStartActionReqSize = off::kActionSize;
 constexpr size_t kRotateReqSize = 176;
-constexpr size_t kWallUpSize = 132;
-constexpr size_t kMoveTs = 0xD5;
-constexpr size_t kStartActionTs = 0x15F;
+constexpr size_t kWallUpSize = 132;  // what read_player_wallup builds (2976 layout)
+constexpr size_t kMoveTs = off::kMoveTs;
+constexpr size_t kStartActionTs = off::kActionTs;
 constexpr size_t kRotateTs = 0x9C;
 
 uint64_t steady_ms() {
@@ -144,7 +145,7 @@ float g_horse_sent_pos[3] = {NAN, NAN, NAN};
 uint64_t g_horse_last_synth_ms = 0;
 Bytes g_last_move;                  // last real MoveActorReq payload (template for synth)
 uint64_t g_last_move_ms = 0;        // steady_ms when it was seen
-uint64_t g_last_move_ts = 0;        // its game timestamp (+0xD5)
+uint64_t g_last_move_ts = 0;        // its game timestamp (off::kMoveTs)
 float g_last_sent_pos[3] = {NAN, NAN, NAN};
 uint64_t g_last_synth_ms = 0;
 uint64_t g_synthesized = 0;
@@ -331,8 +332,8 @@ void drain_equip() {
 }
 
 void emit(proto::EventKind kind, Bytes payload) {
-    // MoveActorReq: the Ack uses only its first 0xEA bytes; the trailing
-    // 10 x 28-byte history (280 of 514 bytes) is never needed by the receiver.
+    // MoveActorReq: the Ack uses only its head (kMoveHead bytes); the trailing
+    // 10 x 28-byte history is never needed by the receiver.
     if (kind == proto::EventKind::Move && payload.size() == kMoveReqSize) payload.resize(kMoveWireSize);
     EventSink sink;
     {
@@ -370,6 +371,17 @@ void note_clock(uint64_t ts) {
 // single-player client never sends it, so read it from memory.
 // Wire layout: docs/research/broadcast-servidor-movimiento.md §10.3.
 std::optional<Bytes> read_player_wallup() {
+    // The game's wire format grew (offsets.h kWallUpAckSize); what we read
+    // from memory is the 2976 one, and a short packet must not reach the
+    // other player's parser.
+    if constexpr (off::kWallUpAckSize != kWallUpSize) {
+        static std::atomic<bool> said{false};
+        if (!said.exchange(true)) {
+            log::info("Capture: ledge climb-up path not sent on this build (layout {} B, ours {} B)",
+                      off::kWallUpAckSize, kWallUpSize);
+        }
+        return std::nullopt;
+    }
     auto cc = g_reader.character_control();
     if (!cc) return std::nullopt;
     auto mover = game::read_ptr(*cc + off::kControl_MoveController);
@@ -731,7 +743,18 @@ void capture_observe_c2s(const uint8_t* packet, size_t size) {
     } else {
         return;
     }
-    if (size != 5 + expected) return;
+    if (size != 5 + expected) {
+        // A game patch that changes the layout would otherwise stop all
+        // movement silently (the other player's copy stands still).
+        static std::atomic<int> warned[3]{};
+        const int k = kind == proto::EventKind::Move ? 0 : kind == proto::EventKind::StartAction ? 1 : 2;
+        if (warned[k]++ < 3) {
+            log::warn("Capture: opcode {} is {} bytes, expected {}; NOT sent (game layout changed?) Please report "
+                      "this line",
+                      op, size - 5, expected);
+        }
+        return;
+    }
 
     Bytes payload(packet + 5, packet + size);
     {
@@ -763,14 +786,31 @@ void capture_observe_c2s(const uint8_t* packet, size_t size) {
     uint64_t ts = 0;
     std::memcpy(&ts, payload.data() + ts_off, 8);
     note_clock(ts);
+    if (kind == proto::EventKind::Move) {
+        // Layout check for testers' logs: the timestamp must track the game
+        // clock, and the u64 fields around it show where it went if not.
+        static std::atomic<int> checked{0};
+        if (const int n = checked.fetch_add(1); n == 0 || n == 200) {
+            auto u64 = [&](size_t at) {
+                uint64_t v = 0;
+                std::memcpy(&v, payload.data() + at, 8);
+                return v;
+            };
+            const auto clock = game::client_game_clock_ms();
+            log::info("Capture: Move #{} layout check: ts +0x{:X} = {} | game clock {} | other u64 +0x44 {} "
+                      "+0xE2 {} | parent 0x{:08X}",
+                      n + 1, off::kMoveTs, ts, clock ? static_cast<int64_t>(*clock) : -1, u64(0x44), u64(0xE2),
+                      u32_at(payload, off::kMoveParent));
+        }
+    }
     if (kind == proto::EventKind::Move && g_own_horse) {
-        // Riding: Path.parent (+0x8C) is the horse and the receiver derives
-        // the horse's moves from ours.
+        // Riding: the parent is the horse and the receiver derives the
+        // horse's moves from ours (Path.world = the horse).
         uint32_t parent = 0;
-        std::memcpy(&parent, payload.data() + 0x8C, 4);
+        std::memcpy(&parent, payload.data() + off::kMoveParent, 4);
         if (parent == g_own_horse) {
             g_ridden_until_ms = steady_ms() + 200;
-            std::memcpy(g_horse_sent_pos, payload.data() + 0x94, sizeof g_horse_sent_pos);
+            std::memcpy(g_horse_sent_pos, payload.data() + off::kMoveWorld, sizeof g_horse_sent_pos);
         }
     }
     if (kind == proto::EventKind::Move) {

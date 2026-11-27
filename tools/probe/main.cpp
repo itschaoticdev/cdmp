@@ -589,9 +589,10 @@ int cmd_report(const Process& p) {
 
     out("\n-- message ids (static Troc instances: RTTI name and opcode)\n");
     struct Msg { const char* name; uint64_t inst; uint16_t op; };
-    // Instance RVAs for 1.0.0.3732, from docs/research/troc_messages_3732.csv.
-    for (const Msg& m : {Msg{"MoveActorReq", 0x6F3A560, off::kOpMoveActorReq}, Msg{"MoveActorAck", 0x6F1C1C0, off::kOpMoveActorAck},
-                         Msg{"ActorLoadDataAck", 0x6F2F110, off::kOpActorLoadDataAck}, Msg{"SetFieldTimeReq", 0x6F3CF90, off::kOpSetFieldTimeReq}}) {
+    // Instance RVAs for 1.0.0.3840, from docs/research/troc_messages_3840.csv
+    // (they were left on older builds' values before: "MISMATCH" false alarms).
+    for (const Msg& m : {Msg{"MoveActorReq", 0x70DEA10, off::kOpMoveActorReq}, Msg{"MoveActorAck", 0x70C00C0, off::kOpMoveActorAck},
+                         Msg{"ActorLoadDataAck", 0x70D3520, off::kOpActorLoadDataAck}, Msg{"SetFieldTimeReq", 0x70E1440, off::kOpSetFieldTimeReq}}) {
         const uint32_t op = p.read<uint32_t>(base + m.inst + off::kTroc_Opcode).value_or(0);
         out(std::format("{:28s} {} opcode {} {}\n", m.name, p.rtti_name(base + m.inst), op, op == m.op ? "OK" : "MISMATCH"));
     }

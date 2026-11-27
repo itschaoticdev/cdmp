@@ -323,6 +323,9 @@ void purge_movement() {
 // Ack handler drops a packet silently unless it consumes exactly payload_len
 // bytes, so sizes must be exact.
 
+// StartActionReq offsets >= 0x8E are one byte later in the Ack (start_action_ack).
+constexpr size_t kAck = 1;
+
 Bytes slice(const Bytes& v, size_t from, size_t to) {
     return Bytes(v.begin() + static_cast<ptrdiff_t>(from), v.begin() + static_cast<ptrdiff_t>(to));
 }
@@ -420,44 +423,44 @@ void rebase_timestamp(Bytes& ack, size_t off) {
     std::memcpy(ack.data() + off, &ts, 8);
 }
 
-// MoveActor: 514 -> 235. Ack = req[0:0xDE] + u8 0 ("also send to controller",
-// read and ignored by the client) + req[0xDE:0xEA]; the Req's trailing
-// 10 x 28-byte history array is not part of the Ack.
+// MoveActor: kMoveReqSize -> kMoveAckSize. Ack = req[0:split] + u8 0 ("also
+// send to controller", read and ignored by the client) + req[split:head]; the
+// Req's trailing 10 x 28-byte history array is not part of the Ack.
+// Layout of this build: game/offsets.h.
 std::optional<Bytes> move_ack(const Bytes& req) {
-    if (req.size() != 514) return std::nullopt;
+    if (req.size() != off::kMoveReqSize) return std::nullopt;
     if (!sane_pos(req, 0x04) || !sane_quat(req, 0x10) || !sane_pos(req, 0x4C) || !finite_at(req, 0x58, 4) ||
-        !finite_at(req, 0x94, 7)) {
+        !finite_at(req, off::kMoveWorld, 7)) {
         return std::nullopt;
     }
     std::memcpy(g_ref_pos, req.data() + 0x04, sizeof g_ref_pos);
-    Bytes ack = slice(req, 0, 0xDE);
+    Bytes ack = slice(req, 0, off::kMoveAckSplit);
     ack.push_back(0);
-    append(ack, slice(req, 0xDE, 0xEA));
+    append(ack, slice(req, off::kMoveAckSplit, off::kMoveHead));
     shift_x(ack, 0x04);
     shift_x(ack, 0x4C);
-    clear_parent(ack, 0x8C);
-    scrub_key(ack, 0x20);
-    rebase_timestamp(ack, 0xD5);  // advances 25 ms per packet in captura-2
+    clear_parent(ack, off::kMoveParent);
+    rebase_timestamp(ack, off::kMoveTs);  // advances 25 ms per packet in captura-2
     return ack;
 }
 
-// StartAction: 725 -> 725, same bytes but the Req's last u8 (a "force" flag)
-// moves to 0x8E, before the big block.
+// StartAction: same size both ways, but the Req's last u8 (a "force" flag)
+// moves to 0x8E, before the big block: every Req offset >= 0x8E is one byte
+// later in the Ack (kAck). Layout of this build: game/offsets.h.
 std::optional<Bytes> start_action_ack(const Bytes& req) {
-    if (req.size() != 725 || !finite_at(req, 0x8E, 7) || !finite_at(req, 0xD6, 3)) return std::nullopt;
+    if (req.size() != off::kActionSize || !finite_at(req, 0x8E, 7) || !finite_at(req, 0xD6, 3)) return std::nullopt;
     Bytes ack = slice(req, 0, 0x8E);
-    ack.push_back(req[0x2D4]);
-    append(ack, slice(req, 0x8E, 0x2D4));
-    clear_parent(ack, 0x117);
-    scrub_key(ack, 0xAB);
-    scrub_key(ack, 0x169);
-    // Action target (Req +0x16C, Ack +0x16D): 0 almost always; when it names
-    // another actor (an enemy, a grabbed animal) it is one of the SENDER's
-    // world, which here may be a different actor (interacciones-mundo.md R3).
-    if (ack.size() >= 0x171) {
+    ack.push_back(req[off::kActionForce]);
+    append(ack, slice(req, 0x8E, off::kActionForce));
+    clear_parent(ack, off::kActionParent + kAck);
+    scrub_key(ack, off::kActionKey + kAck);
+    // Action target: 0 almost always; when it names another actor (an enemy,
+    // a grabbed animal) it is one of the SENDER's world, which here may be a
+    // different actor (interacciones-mundo.md R3).
+    if (constexpr size_t t = off::kActionTarget + kAck; ack.size() >= t + 4) {
         uint32_t target;
-        std::memcpy(&target, ack.data() + 0x16D, 4);
-        if (is_actor_key(target) && !is_puppet_key(target)) std::memset(ack.data() + 0x16D, 0, 4);
+        std::memcpy(&target, ack.data() + t, 4);
+        if (is_actor_key(target) && !is_puppet_key(target)) std::memset(ack.data() + t, 0, 4);
     }
     // World positions found in captura-2 at Req 0x8E (393/400 packets) and
     // 0xD6 (247/400); they sit one byte later in the Ack. Unshifted, they
@@ -465,8 +468,8 @@ std::optional<Bytes> start_action_ack(const Bytes& req) {
     shift_x_if_near_sender(ack, 0x8F);
     shift_x_if_near_sender(ack, 0xD7);
     // StartAction feeds the same position buffer as MoveActor; its u64
-    // timestamp (Ack+0x160) needs the same rebase (movimiento-remoto-cliente.md).
-    rebase_timestamp(ack, 0x160);
+    // timestamp needs the same rebase (movimiento-remoto-cliente.md).
+    rebase_timestamp(ack, off::kActionTs + kAck);
     return ack;
 }
 
@@ -501,7 +504,7 @@ std::optional<Bytes> wallup_ack(const Bytes& req) {
 
 // ---------------------------------------------------------------- event-thread state
 std::atomic<uint64_t> g_events{0};
-// Riding state of the sender, from Path.parent (+0x8C) of its Moves.
+// Riding state of the sender, from the parent (off::kMoveParent) of its Moves.
 bool g_sender_riding = false;
 int g_unmounted_moves = 0;
 std::atomic<bool> g_reload_request{false};
@@ -720,7 +723,7 @@ void fill_gap_before(const Bytes& next, uint64_t delay) {
     if (g_gap_ref_stale.exchange(false)) return;  // reloaded since that Move (5 Oct: 1-7 m jumps)
     if (g_last_move.empty()) return;
     uint64_t ts_next = 0;
-    std::memcpy(&ts_next, next.data() + 0xD5, 8);
+    std::memcpy(&ts_next, next.data() + off::kMoveTs, 8);
     if (ts_next <= g_last_move_ts) return;
     const uint64_t gap = ts_next - g_last_move_ts;
     if (gap < kGapMinMs || gap > kGapMaxMs) return;
@@ -763,12 +766,12 @@ void fill_gap_before(const Bytes& next, uint64_t delay) {
     AcquireSRWLockExclusive(&g_queue_lock);
     for (Pending& item : g_queue) {
         Bytes& pk = item.packet;
-        if (!item.movement || pk.size() != 5 + 725) continue;
+        if (!item.movement || pk.size() != 5 + off::kActionSize) continue;
         uint16_t op;
         std::memcpy(&op, pk.data(), 2);
         if (op != off::kOpStartActionAck) continue;
         uint64_t ts;
-        std::memcpy(&ts, pk.data() + 5 + 0x160, 8);
+        std::memcpy(&ts, pk.data() + 5 + off::kActionTs + kAck, 8);
         if (ts < win_lo || ts > win_hi) continue;
         float p[3];
         path_at(std::min(1.0f, static_cast<float>(ts - win_lo) / static_cast<float>(gap)), p);
@@ -798,7 +801,7 @@ void fill_gap_before(const Bytes& next, uint64_t delay) {
         std::memcpy(req.data() + 0x04, p, sizeof p);
         std::memcpy(req.data() + 0x4C, p, sizeof p);
         const uint64_t ts = g_last_move_ts + k * kGapStepMs;
-        std::memcpy(req.data() + 0xD5, &ts, 8);
+        std::memcpy(req.data() + off::kMoveTs, &ts, 8);
         auto ack = move_ack(req);
         if (!ack) return;
         // Due when the original sample would have been: received at the time
@@ -1318,10 +1321,11 @@ bool puppet_spawn_enemy(uint32_t copy_key, std::vector<uint8_t> load, std::vecto
         if (const uint64_t est = capture_game_clock_ms()) game_now = est;  // the estimate (clock read off)
     }
     int with_action = 0;
-    for (size_t at = 0; at + 725 <= action_req.size(); at += 725) {
-        const Bytes one(action_req.begin() + at, action_req.begin() + at + 725);
+    for (size_t at = 0; at + off::kActionSize <= action_req.size(); at += off::kActionSize) {
+        const Bytes one(action_req.begin() + at, action_req.begin() + at + off::kActionSize);
         if (auto ack = start_action_ack(one)) {
-            if (game_now && ack->size() >= 0x168) std::memcpy(ack->data() + 0x160, &*game_now, 8);
+            constexpr size_t ts_at = off::kActionTs + kAck;
+            if (game_now && ack->size() >= ts_at + 8) std::memcpy(ack->data() + ts_at, &*game_now, 8);
             enqueue_at(make_packet(off::kOpStartActionAck, *ack), now, /*movement=*/false);
             ++with_action;
         }
@@ -1330,18 +1334,17 @@ bool puppet_spawn_enemy(uint32_t copy_key, std::vector<uint8_t> load, std::vecto
     // without one the first copies loaded but never showed (live test). One
     // still sample where it stands, built on the other player's last Move.
     bool with_move = false;
-    if (g_last_move.size() == 514 && std::isfinite(orig[0])) {
+    if (g_last_move.size() == off::kMoveReqSize && std::isfinite(orig[0])) {
         Bytes m = g_last_move;
         std::memcpy(m.data() + 0x00, &copy_key, 4);
         std::memcpy(m.data() + 0x04, orig, 12);
         std::memcpy(m.data() + 0x10, rot, 16);
-        std::memset(m.data() + 0x20, 0, 4);
         std::memcpy(m.data() + 0x4C, orig, 12);  // Path.local = world, no parent
         std::memcpy(m.data() + 0x58, rot, 16);
         const float one[3] = {1.0f, 1.0f, 1.0f};
         std::memcpy(m.data() + 0x68, one, sizeof one);
-        std::memset(m.data() + 0x8C, 0xFF, 8);
-        std::memset(m.data() + 0x94, 0, 0x40);
+        std::memset(m.data() + off::kMoveParent, 0xFF, 8);
+        std::memset(m.data() + off::kMoveWorld, 0, off::kMoveWorldLen);
         float ref[3];
         std::memcpy(ref, g_ref_pos, sizeof ref);  // the sender's reference stays
         auto ack = move_ack(m);
@@ -1364,21 +1367,20 @@ std::map<uint32_t, std::array<float, 3>> g_enemy_pos;
 
 void puppet_enemy_move(uint32_t copy_key, uint64_t ts, const proto::Vec3& pos, const proto::Quat& rot,
                        int64_t ts_shift_ms, uint64_t delay_ms) {
-    if (g_last_move.size() != 514) return;
+    if (g_last_move.size() != off::kMoveReqSize) return;
     Bytes m = g_last_move;
     const float p[3] = {pos.x, pos.y, pos.z};
     const float q[4] = {rot.x, rot.y, rot.z, rot.w};
     std::memcpy(m.data() + 0x00, &copy_key, 4);
     std::memcpy(m.data() + 0x04, p, sizeof p);
     std::memcpy(m.data() + 0x10, q, sizeof q);
-    std::memset(m.data() + 0x20, 0, 4);
     std::memcpy(m.data() + 0x4C, p, sizeof p);  // Path.local = world, no parent
     std::memcpy(m.data() + 0x58, q, sizeof q);
     const float one[3] = {1.0f, 1.0f, 1.0f};
     std::memcpy(m.data() + 0x68, one, sizeof one);
-    std::memset(m.data() + 0x8C, 0xFF, 8);
-    std::memset(m.data() + 0x94, 0, 0x40);
-    std::memcpy(m.data() + 0xD5, &ts, 8);
+    std::memset(m.data() + off::kMoveParent, 0xFF, 8);
+    std::memset(m.data() + off::kMoveWorld, 0, off::kMoveWorldLen);
+    std::memcpy(m.data() + off::kMoveTs, &ts, 8);
     g_enemy_pos[copy_key] = {p[0], p[1], p[2]};
     float ref[3];
     std::memcpy(ref, g_ref_pos, sizeof ref);
@@ -1483,7 +1485,7 @@ std::optional<proto::Vec3> puppet_position() {
 
 // ---------------------------------------------------------------- horse
 // While the sender rides, its own Moves carry the horse's world transform in
-// Path.world (+0x94 position, +0xA0 rotation; caballo-coop.md §1.2) at ~36 Hz,
+// Path.world (off::kMoveWorld: position, then rotation; caballo-coop.md §1.2) at ~36 Hz,
 // whereas the horse itself reports only once a second. Derive a horse Move
 // from every rider Move, with the same timestamp, so both copies interpolate
 // in step and the rider stays in the saddle.
@@ -1493,15 +1495,14 @@ void ride_horse(const Bytes& rider_req, uint64_t now, uint64_t delay_ms) {
     if (!g_horse_spawned) return;
     Bytes h = rider_req;
     std::memcpy(h.data() + 0x00, &kPuppetHorse, 4);
-    std::memcpy(h.data() + 0x04, rider_req.data() + 0x94, 12);  // horse position
-    std::memcpy(h.data() + 0x10, rider_req.data() + 0xA0, 16);  // horse rotation
-    std::memset(h.data() + 0x20, 0, 4);
-    std::memcpy(h.data() + 0x4C, rider_req.data() + 0x94, 12);  // Path.local = world, no parent
-    std::memcpy(h.data() + 0x58, rider_req.data() + 0xA0, 16);
+    std::memcpy(h.data() + 0x04, rider_req.data() + off::kMoveWorld, 12);         // horse position
+    std::memcpy(h.data() + 0x10, rider_req.data() + off::kMoveWorld + 0x0C, 16);  // horse rotation
+    std::memcpy(h.data() + 0x4C, rider_req.data() + off::kMoveWorld, 12);  // Path.local = world, no parent
+    std::memcpy(h.data() + 0x58, rider_req.data() + off::kMoveWorld + 0x0C, 16);
     const float one[3] = {1.0f, 1.0f, 1.0f};
     std::memcpy(h.data() + 0x68, one, sizeof one);
-    std::memset(h.data() + 0x8C, 0xFF, 8);
-    std::memset(h.data() + 0x94, 0, 0x40);
+    std::memset(h.data() + off::kMoveParent, 0xFF, 8);
+    std::memset(h.data() + off::kMoveWorld, 0, off::kMoveWorldLen);
     float hp[3];
     std::memcpy(hp, h.data() + 0x04, sizeof hp);
     if (!std::isfinite(hp[0]) || (hp[0] == 0.0f && hp[2] == 0.0f)) return;
@@ -1583,7 +1584,7 @@ void puppet_event(const proto::GameEvent& ev, int64_t ts_shift_ms, uint64_t dela
     const uint32_t src = g_src_player_key;
     Bytes payload = ev.payload;
     // Moves arrive without their unused trailing history (local_capture emit).
-    if (ev.kind == proto::EventKind::Move && payload.size() == 0xEA) payload.resize(514, 0);
+    if (ev.kind == proto::EventKind::Move && payload.size() == off::kMoveHead) payload.resize(off::kMoveReqSize, 0);
     // The actor key leads every payload, after a fragment marker byte in
     // OtherEquipItemAck.
     const size_t key_at = ev.kind == proto::EventKind::Equip   ? 1
@@ -1624,21 +1625,21 @@ void puppet_event(const proto::GameEvent& ev, int64_t ts_shift_ms, uint64_t dela
     std::optional<Bytes> ack;
     switch (ev.kind) {
         case proto::EventKind::Move:
-            if (payload.size() != 514) return;
+            if (payload.size() != off::kMoveReqSize) return;
             fill_gap_before(payload, move_hold);
             g_last_move = payload;
             g_last_move_ms = now;
-            std::memcpy(&g_last_move_ts, payload.data() + 0xD5, 8);
+            std::memcpy(&g_last_move_ts, payload.data() + off::kMoveTs, 8);
             std::memcpy(g_last_move_pos, payload.data() + 0x04, sizeof g_last_move_pos);
             ack_op = off::kOpMoveActorAck;
             ack = move_ack(payload);
-            if (u32_at(payload, 0x8C) == kPuppetHorse) ride_horse(payload, now, move_hold);
+            if (u32_at(payload, off::kMoveParent) == kPuppetHorse) ride_horse(payload, now, move_hold);
             {
                 // Dismounted (parent back to none for a few Moves): unless our
                 // copy really rides our copy of the horse, reload it. Only the
                 // sender's horse counts: other parents (a pulled tree, a carried
                 // animal, a boat) caused reload loops in live test 4.
-                const uint32_t parent = u32_at(payload, 0x8C);
+                const uint32_t parent = u32_at(payload, off::kMoveParent);
                 const uint32_t horse = g_sender_horse;
                 const bool riding = horse && (parent == kPuppetHorse || parent == horse);
                 if (riding) {
@@ -1664,7 +1665,7 @@ void puppet_event(const proto::GameEvent& ev, int64_t ts_shift_ms, uint64_t dela
         case proto::EventKind::StartAction:
             // A StartAction right after a filled climb-up that still carries the
             // frozen start position: move it to where the sender ended up.
-            if (payload.size() == 725 && g_recent_gap.valid) {
+            if (payload.size() == off::kActionSize && g_recent_gap.valid) {
                 if (now - g_recent_gap.detected_ms <= 300) {
                     for (size_t at : {size_t{0x8E}, size_t{0xD6}}) {
                         float v[3];
@@ -1778,7 +1779,7 @@ void puppet_event(const proto::GameEvent& ev, int64_t ts_shift_ms, uint64_t dela
         case proto::EventKind::Docking:
             // Resolved against the action the puppet is playing, which was
             // queued before with the same delay.
-            if (payload.size() != 16) return;
+            if (payload.size() != off::kDockingAckSize) return;
             enqueue_at(make_packet(off::kOpChangeDockingSocketByFrameEventAck, payload),
                        action_due(now + g_action_hold), /*movement=*/true);
             return;
@@ -1802,7 +1803,7 @@ void puppet_event(const proto::GameEvent& ev, int64_t ts_shift_ms, uint64_t dela
     if (ev.kind == proto::EventKind::Move) {
         enqueue_at(make_packet(ack_op, *ack), movement_due(now + move_hold), /*movement=*/true);
     } else {
-        g_action_hold = action_hold_for(*ack, ev.kind == proto::EventKind::StartAction ? 0x160 : 0x9C, delay_ms);
+        g_action_hold = action_hold_for(*ack, ev.kind == proto::EventKind::StartAction ? off::kActionTs + kAck : 0x9C, delay_ms);
         const uint64_t due = action_due(now + g_action_hold);
         if (ev.kind == proto::EventKind::StartAction && !is_horse && g_copy_hooked && payload.size() >= 12) {
             const uint32_t next = u32_at(payload, 8);
@@ -2067,8 +2068,8 @@ void puppet_tick() {
 bool movement_ts(const Bytes& pk, size_t& at, InjectClock::Buffer& buffer) {
     if (pk.size() < 5 + 4) return false;
     const uint16_t op = static_cast<uint16_t>(pk[0] | (pk[1] << 8));
-    if (op == off::kOpMoveActorAck) at = 5 + 0xD5, buffer = InjectClock::Buffer::Position;
-    else if (op == off::kOpStartActionAck) at = 5 + 0x160, buffer = InjectClock::Buffer::Both;
+    if (op == off::kOpMoveActorAck) at = 5 + off::kMoveTs, buffer = InjectClock::Buffer::Position;
+    else if (op == off::kOpStartActionAck) at = 5 + off::kActionTs + kAck, buffer = InjectClock::Buffer::Both;
     else if (op == off::kOpRotateActorAck) at = 5 + 0x9C, buffer = InjectClock::Buffer::Rotation;
     else return false;
     return pk.size() >= at + 8;
