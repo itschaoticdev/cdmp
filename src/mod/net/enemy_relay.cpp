@@ -34,7 +34,10 @@ constexpr uint16_t kOpRemoveActorAck = 2157;
 constexpr uint16_t kOpStartActionReq = 2221;
 constexpr uint16_t kOpRotateActorReq = 2582;
 constexpr uint16_t kOpChangeBattleStateReq = 2445;  // 5 B: u32 actor | u8 state (0 = out of combat)
-constexpr uint16_t kOpDoFrameEventReq = 3090;       // u8 4 | u32 attacker | ... | 665-byte target entries at the end
+constexpr uint16_t kOpDoFrameEventReq = 3090;       // u8 4 | u32 attacker | ... head ... | target entries
+// DoFrameEventReq head before the target entries: 0x203 B on 2976, 0x20A on
+// 3840 (troc_layout.py: 944 -> 981 B with no entries).
+constexpr size_t kFrameEventHead = 0x20A;
 constexpr uint16_t kOpCurrentTargetChangeReq = 2842;  // u32 actor | u32 target | u64 seq | u8 | u8 reason
 constexpr uint64_t kEngagedMs = 20000;
 // An enemy that aimed at or struck one of us this long ago still counts as
@@ -484,9 +487,12 @@ bool sanitize_load(Bytes& load, uint32_t copy, std::string& why) {
                                              tail->parent);
         return false;
     }
-    // 1) tail: parent 0, no children
+    // 1) tail: parent 0, no children (the bytes a newer build adds after the
+    // children list stay as they were)
+    const Bytes pad(load.end() - static_cast<ptrdiff_t>(tail->pad), load.end());
     load.resize(tail->ac);
     load.insert(load.end(), 6, 0);
+    load.insert(load.end(), pad.begin(), pad.end());
     // 2) party block -> the solo template
     std::string party = "no party";
     if (auto pb = find_party(load, copy)) {
@@ -828,6 +834,77 @@ void learn_faction_locked(uint32_t key) {
               enemy_load::name(l->second));
 }
 
+// Caller holds g_mutex. Fighting one of us in the last kEngagedMs.
+bool fighting_locked(uint32_t key, uint64_t now) {
+    auto e = g_engaged.find(key);
+    return e != g_engaged.end() && now - e->second < kEngagedMs;
+}
+
+std::string hex_of(const Bytes& v, size_t from, size_t n) {
+    std::string s;
+    for (size_t i = from; i < v.size() && i < from + n; ++i) s += std::format("{:02X}", v[i]);
+    return s;
+}
+
+// Every 30 s while the zone is on: why the persons loaded near us are not zone
+// enemies (counted by reason), and once the start and end of the nearest one
+// turned down, so a log shows what a new build moved in the load.
+uint64_t g_zone_reject_ms = 0;
+std::string g_zone_reject_last;
+bool g_zone_reject_dumped = false;
+void zone_reject_log(const PartnerZone& z, const proto::Vec3& me, const enemy_load::ZoneRules& rules, uint64_t now) {
+    if (now - g_zone_reject_ms < 30000) return;
+    g_zone_reject_ms = now;
+    std::vector<uint32_t> keys;
+    {
+        std::lock_guard lock(g_mutex);
+        for (const auto& [key, load] : g_loads) {
+            if (load.size() >= 3 && load[2] == 3) keys.push_back(key);
+        }
+    }
+    std::map<std::string, int> why;
+    int nearby = 0, yes = 0;
+    float best_d = 1e9f;
+    Bytes best;
+    std::string best_why;
+    for (uint32_t key : keys) {
+        const auto p = game::actor_world_position(key);
+        if (!p) continue;
+        const float d = enemy_load::flat_distance(*p, me);
+        if (d > z.radius) continue;
+        ++nearby;
+        std::lock_guard lock(g_mutex);
+        auto l = g_loads.find(key);
+        if (l == g_loads.end()) continue;
+        const auto c = enemy_load::zone_check(l->second, rules);
+        if (c.verdict != enemy_load::Verdict::No) {
+            ++yes;
+            continue;
+        }
+        ++why[c.why];
+        // A hostile-looking one (a faction, not an animal or a civilian) is
+        // the one worth seeing.
+        const bool factioned = l->second.size() >= 0x20 && u32_at(l->second.data() + 0x1C) != 0;
+        if (factioned && d < best_d) best_d = d, best = l->second, best_why = c.why;
+    }
+    std::string text;
+    for (const auto& [w, n] : why) text += std::format("{}{} x{}", text.empty() ? "" : ", ", w, n);
+    const std::string line = std::format("{} persons within {:.0f} m, {} zone enemies{}{}", nearby, z.radius, yes,
+                                         text.empty() ? "" : "; turned down: ", text);
+    if (line != g_zone_reject_last) {
+        g_zone_reject_last = line;
+        log::info("Enemy relay: zone check: {}", line);
+    }
+    if (!g_zone_reject_dumped && !best.empty()) {
+        g_zone_reject_dumped = true;
+        const auto h = enemy_load::read_head(best);
+        log::info("Enemy relay: nearest turned-down enemy \"{}\" ({:.0f} m, {} B, faction {}, variant {}): {}. "
+                  "Please report these lines. head {} | end {}",
+                  enemy_load::name(best), best_d, best.size(), h ? h->faction : 0, h ? h->variant : 0, best_why,
+                  hex_of(best, 0, 0x40), hex_of(best, best.size() > 160 ? best.size() - 160 : 0, 160));
+    }
+}
+
 struct ZoneCandidate {
     uint32_t key;
     bool engaged;
@@ -903,18 +980,25 @@ void zone_tick(const PartnerZone& z, const proto::Vec3& me, bool me_jumped, uint
     }
     const enemy_load::ZoneRules rules{z.caution, learnt};
     for (const auto& [key, copy] : sent) {
-        bool zone_enemy;
+        bool zone_enemy, fighting;
         {
             std::lock_guard lock(g_mutex);
             zone_enemy = is_zone_enemy_locked(key, rules);
+            fighting = !zone_enemy && fighting_locked(key, now);
         }
         const auto p = game::actor_world_position(key);
         const bool gone = !p, too_far = p && !me_jumped && enemy_load::flat_distance(*p, me) > radius + kZoneDropExtra;
+        // Not a zone enemy but fighting one of us (sent by the fallback
+        // below): kept like an automatic copy, while it is near.
+        if (fighting && !gone && (me_jumped || distance(*p, me) <= kAutoDropRadius)) {
+            g_away_since.erase(key);
+            continue;
+        }
         if (zone_enemy && !gone && !too_far) {
             g_away_since.erase(key);
             continue;
         }
-        if (zone_enemy) {
+        if (zone_enemy || fighting) {
             auto [it, first] = g_away_since.try_emplace(key, now);
             if (now - it->second < (gone ? kGoneForMs : kFarForMs)) continue;
             g_away_since.erase(it);
@@ -924,7 +1008,7 @@ void zone_tick(const PartnerZone& z, const proto::Vec3& me, bool me_jumped, uint
         std::lock_guard lock(g_mutex);
         remove_locked(key);
         log::info("Enemy relay: enemy 0x{:08X} {}; its copy 0x{:08X} removed", key,
-                  !zone_enemy ? "is not a zone enemy" : gone ? "is gone" : "left the zone", copy);
+                  gone ? "is gone" : fighting ? "is far" : !zone_enemy ? "is not a zone enemy" : "left the zone", copy);
     }
     if (me_jumped) return;
     std::vector<const ZoneCandidate*> wanted;  // not copied yet, within the radius, nearest first
@@ -956,6 +1040,21 @@ void zone_tick(const PartnerZone& z, const proto::Vec3& me, bool me_jumped, uint
         if (count >= kZoneMax || sends >= kZoneSendsPerTick) break;
         if (send_enemy(c->key, c->engaged ? "zone, fighting" : "zone", epoch)) ++count, ++sends;
     }
+    // An enemy fighting one of us goes even when the zone predicate turns it
+    // down: on 1.0.0.3840 it turned every enemy down and the guest saw none
+    // (karna's log, 27 Nov). The guest then still sees its own one there too.
+    auto fighters = candidates();
+    std::sort(fighters.begin(), fighters.end(), [](const Candidate& a, const Candidate& b) { return a.d < b.d; });
+    for (const auto& c : fighters) {
+        if (count >= kZoneMax || sends >= kZoneSendsPerTick) break;
+        if (!c.engaged) continue;
+        {
+            std::lock_guard lock(g_mutex);
+            if (is_zone_enemy_locked(c.key, rules)) continue;  // the zone's own (within its radius or not)
+        }
+        if (send_enemy(c.key, "fighting you, not a zone enemy", epoch)) ++count, ++sends;
+    }
+    zone_reject_log(z, me, rules, now);
 }
 
 // The guest's dry run: what we would copy, logged when it changes.
@@ -1195,15 +1294,18 @@ void enemy_observe_c2s(const uint8_t* packet, size_t size) {
         }
         return;
     }
-    if (op == kOpDoFrameEventReq && size >= 5 + 0x203 + 665 && packet[5] == 0x04) {
+    if (op == kOpDoFrameEventReq && size >= 5 + kFrameEventHead && packet[5] == 0x04) {
+        // The target entries follow the head (0x203 B on 2976, 0x20A on
+        // 3840) and their size changed with the build (665 B on 2976): any
+        // u32 after the head that is our player or the other player's copy
+        // counts, the attacker being an NPC of our world (g_loads).
         const uint32_t attacker = u32_at(packet + 6), own = capture_own_player_key();
         const uint8_t* p = packet + 5;
         const size_t n = size - 5;
         bool at_us = false;
-        for (size_t k = 1; k <= 30 && n >= k * 665 + 0x203; ++k) {
-            const uint32_t t = u32_at(p + n - k * 665);
-            if (!keys::is_actor_key(t)) break;
-            at_us = at_us || (own && t == own) || t == kPuppetPlayer;
+        for (size_t i = kFrameEventHead; !at_us && i + 4 <= n; ++i) {
+            const uint32_t t = u32_at(p + i);
+            at_us = (own && t == own) || t == kPuppetPlayer;
         }
         if (at_us) {
             std::lock_guard lock(g_mutex);

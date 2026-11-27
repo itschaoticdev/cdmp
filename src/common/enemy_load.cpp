@@ -80,6 +80,20 @@ std::optional<Transform> last_transform(std::span<const uint8_t> load) {
 }
 
 std::optional<Tail> parse_tail(std::span<const uint8_t> pl) {
+    // 1.0.0.3840 loads end 3 bytes later than 2976's (the character load's
+    // Transform moved from 154 to 157 bytes before the end, karna's log
+    // 27 Nov): a few bytes after the children list are skipped, fewest first.
+    for (size_t pad = 0; pad <= kMaxTailPad; ++pad) {
+        if (pl.size() < pad + 10) break;
+        if (auto t = parse_tail_at(pl.first(pl.size() - pad))) {
+            t->pad = pad;
+            return t;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Tail> parse_tail_at(std::span<const uint8_t> pl) {
     const size_t len = pl.size();
     for (size_t n = 0; n <= 64; ++n) {
         if (len < 2 + 4 * n + 8) break;
@@ -101,6 +115,9 @@ std::optional<Tail> parse_tail(std::span<const uint8_t> pl) {
             bool hk = true;
             for (size_t i = 0; i < m; ++i) hk = hk && is_key_shape(u32_at(pl.data() + ho + 2 + 4 * i));
             if (!hk) continue;
+            // The parent is none or a key: bytes a newer build appends must
+            // not pass for one (a zero tail read one pad too short).
+            if (const uint32_t parent = u32_at(pl.data() + ac); parent != 0 && !is_key_shape(parent)) continue;
             Tail t;
             t.ac = ac;
             t.parent = u32_at(pl.data() + ac);

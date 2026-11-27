@@ -901,6 +901,7 @@ struct LoadSpec {
     uint32_t parent = 0;
     std::vector<uint32_t> children, hierarchy;
     proto::Vec3 pos{-10284.0f, 640.0f, -3383.0f};
+    std::vector<uint8_t> pad;  // after the children list (1.0.0.3840 adds 3 bytes)
 };
 
 std::vector<uint8_t> make_load(const LoadSpec& s) {
@@ -947,6 +948,7 @@ std::vector<uint8_t> make_load(const LoadSpec& s) {
     push32(s.parent);
     push16(static_cast<uint16_t>(s.children.size()));
     for (uint32_t k : s.children) push32(k);
+    v.insert(v.end(), s.pad.begin(), s.pad.end());
     const uint16_t len = static_cast<uint16_t>(v.size() - 2);
     std::memcpy(v.data(), &len, 2);
     return v;
@@ -988,6 +990,25 @@ void test_enemy_zone_predicate() {
         const auto c = zone_check(make_load(s), plain);
         CHECK(c.verdict == Verdict::FollowParent && c.parent == 0xB0100223);
     }
+    // 1.0.0.3840: bytes after the children list (zeros or not).
+    for (const std::vector<uint8_t>& pad : {std::vector<uint8_t>{0, 0, 0}, std::vector<uint8_t>{1, 0x2A, 0},
+                                            std::vector<uint8_t>{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}}) {
+        LoadSpec p = bandit;
+        p.pad = pad;
+        auto tail = parse_tail(make_load(p));
+        CHECK(tail && tail->parent == 0 && tail->children.empty() && tail->pad <= pad.size());
+        CHECK(verdict(p) == Verdict::Yes);
+        p.children = {0xB0100224, 0xB0100225};  // a leader
+        tail = parse_tail(make_load(p));
+        CHECK(tail && tail->children.size() == 2 && tail->children[0] == 0xB0100224 && tail->pad == pad.size());
+        p.children.clear();
+        p.key = 0xB0100224, p.parent = 0xB0100223;  // a member: the real parent, never pad bytes
+        const auto c = zone_check(make_load(p), plain);
+        CHECK(c.verdict == Verdict::FollowParent && c.parent == 0xB0100223);
+        tail = parse_tail(make_load(p));
+        CHECK(tail && tail->pad == pad.size());
+    }
+    CHECK(!parse_tail_at(make_load([&] { LoadSpec p = bandit; p.pad = {1, 0x2A, 0}; return p; }())));
     LoadSpec s = bandit;
     s.origin = 'F', s.origin_id = 1234;  // faction camp node
     CHECK(verdict(s) == Verdict::Yes);

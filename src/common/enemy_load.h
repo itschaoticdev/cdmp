@@ -44,15 +44,20 @@ struct Transform {
 };
 std::optional<Transform> last_transform(std::span<const uint8_t> load);
 
-// Read from the end with its own counters: u16 n | n keys ends the record,
-// the parent before it, and the Hierarchy u16 m | m keys before that.
+// Read from the end with its own counters: u16 n | n keys ends the record
+// (up to kMaxTailPad bytes after it are allowed: 1.0.0.3840 added some), the
+// parent before it, and the Hierarchy u16 m | m keys before that.
+inline constexpr size_t kMaxTailPad = 8;
 struct Tail {
     size_t ac = 0;  // offset of actor+0xAC (parent)
     uint32_t parent = 0;
     std::vector<uint32_t> children;   // actor+0xB0 (a camp leader's members)
     std::vector<uint32_t> hierarchy;  // Hierarchy children, just before
+    size_t pad = 0;                   // bytes after the children list
 };
 std::optional<Tail> parse_tail(std::span<const uint8_t> load);
+// The same with no bytes allowed after the children list.
+std::optional<Tail> parse_tail_at(std::span<const uint8_t> load);
 
 // Where the enemy spawns from (ids-enemigos-verificacion.md §2), relative to
 // its first Transform T0: a schedule (hash + element id), a sequence (hash +
