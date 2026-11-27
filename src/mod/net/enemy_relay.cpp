@@ -170,7 +170,7 @@ bool valid_size(uint16_t op, size_t n) {
         case kOpStartActionReq: return n == kStartActionReqSize;
         case kOpRotateActorReq: return n == kRotateActorReqSize;
         case kOpAttackTargetAck: return n >= 0xA0 && n <= 0x400;
-        case kOpApplyActionRestrictionAck: return n == 77;
+        case kOpApplyActionRestrictionAck: return n == off::kAarSize;  // 69 on 3840 [77]
         case kOpVaryHPAck: return n == 92;
         case kOpNotifyHandleDeadAck: return n == 19;
         default: return false;
@@ -560,7 +560,7 @@ bool map_message_locked(uint16_t op, Bytes& v, uint32_t self) {
         case kOpAttackTargetAck:
             map_field_locked(v, 0x04, false), map_field_locked(v, 0xBC, false), map_field_locked(v, 0xCE, false);
             break;
-        case kOpApplyActionRestrictionAck: map_field_locked(v, 0x49, false); break;
+        case kOpApplyActionRestrictionAck: map_field_locked(v, off::kAarSource, false); break;
         default: break;
     }
     size_t at = 0;
@@ -849,10 +849,11 @@ std::string hex_of(const Bytes& v, size_t from, size_t n) {
 // Every 30 s while the zone is on: why the persons loaded near us are not zone
 // enemies (counted by reason), and once the start and end of the nearest one
 // turned down, so a log shows what a new build moved in the load.
+constexpr float kGuestReportRadius = 150.0f;  // [coop] suppress_radius_m's default
 uint64_t g_zone_reject_ms = 0;
 std::string g_zone_reject_last;
 bool g_zone_reject_dumped = false;
-void zone_reject_log(const PartnerZone& z, const proto::Vec3& me, const enemy_load::ZoneRules& rules, uint64_t now) {
+void zone_reject_log(float radius, const proto::Vec3& me, const enemy_load::ZoneRules& rules, uint64_t now) {
     if (now - g_zone_reject_ms < 30000) return;
     g_zone_reject_ms = now;
     std::vector<uint32_t> keys;
@@ -871,7 +872,7 @@ void zone_reject_log(const PartnerZone& z, const proto::Vec3& me, const enemy_lo
         const auto p = game::actor_world_position(key);
         if (!p) continue;
         const float d = enemy_load::flat_distance(*p, me);
-        if (d > z.radius) continue;
+        if (d > radius) continue;
         ++nearby;
         std::lock_guard lock(g_mutex);
         auto l = g_loads.find(key);
@@ -889,7 +890,7 @@ void zone_reject_log(const PartnerZone& z, const proto::Vec3& me, const enemy_lo
     }
     std::string text;
     for (const auto& [w, n] : why) text += std::format("{}{} x{}", text.empty() ? "" : ", ", w, n);
-    const std::string line = std::format("{} persons within {:.0f} m, {} zone enemies{}{}", nearby, z.radius, yes,
+    const std::string line = std::format("{} persons within {:.0f} m, {} zone enemies{}{}", nearby, radius, yes,
                                          text.empty() ? "" : "; turned down: ", text);
     if (line != g_zone_reject_last) {
         g_zone_reject_last = line;
@@ -898,10 +899,19 @@ void zone_reject_log(const PartnerZone& z, const proto::Vec3& me, const enemy_lo
     if (!g_zone_reject_dumped && !best.empty()) {
         g_zone_reject_dumped = true;
         const auto h = enemy_load::read_head(best);
-        log::info("Enemy relay: nearest turned-down enemy \"{}\" ({:.0f} m, {} B, faction {}, variant {}): {}. "
-                  "Please report these lines. head {} | end {}",
-                  enemy_load::name(best), best_d, best.size(), h ? h->faction : 0, h ? h->variant : 0, best_why,
-                  hex_of(best, 0, 0x40), hex_of(best, best.size() > 160 ? best.size() - 160 : 0, 160));
+        const auto o = enemy_load::origin(best);
+        const auto t0 = enemy_load::t0_offset(best);
+        log::info("Enemy relay: nearest turned-down enemy \"{}\" ({:.0f} m, {} B, faction {}, variant {}, origin {} "
+                  "0x{:08X}/{}, T0 at {}): {}. Please report these lines.",
+                  enemy_load::name(best), best_d, best.size(), h ? h->faction : 0, h ? h->variant : 0,
+                  static_cast<char>(o.kind), o.id, o.sub, t0 ? static_cast<int64_t>(*t0) : -1, best_why);
+        log::info("Enemy relay: load head {}", hex_of(best, 0, 0x60));
+        if (t0) {
+            log::info("Enemy relay: load T0-24.. {}", hex_of(best, *t0 >= 24 ? *t0 - 24 : 0, 112));
+            log::info("Enemy relay: load T0+360.. {}", hex_of(best, *t0 + 360, 64));
+            log::info("Enemy relay: load T0+1010.. {}", hex_of(best, *t0 + 1010, 64));
+        }
+        log::info("Enemy relay: load end {}", hex_of(best, best.size() > 200 ? best.size() - 200 : 0, 200));
     }
 }
 
@@ -1054,7 +1064,7 @@ void zone_tick(const PartnerZone& z, const proto::Vec3& me, bool me_jumped, uint
         }
         if (send_enemy(c.key, "fighting you, not a zone enemy", epoch)) ++count, ++sends;
     }
-    zone_reject_log(z, me, rules, now);
+    zone_reject_log(z.radius, me, rules, now);
 }
 
 // The guest's dry run: what we would copy, logged when it changes.
@@ -1673,7 +1683,7 @@ void scrub_message(uint16_t op, Bytes& v, uint32_t copy, uint32_t own) {
             scrub_field(v, 0x04, copy, own);
             scrub_key_shaped(v, 0xBC, copy, own), scrub_key_shaped(v, 0xCE, copy, own);
             break;
-        case kOpApplyActionRestrictionAck: scrub_field(v, 0x49, copy, own); break;
+        case kOpApplyActionRestrictionAck: scrub_field(v, off::kAarSource, copy, own); break;
         default: break;
     }
 }
@@ -1976,6 +1986,18 @@ void enemy_on_spawn(const std::vector<uint8_t>& bytes) {
 void enemy_kept_corpses_tick();
 
 void enemy_tick() {
+    // The guest (no relay of ours): the same 30 s report on our own world's
+    // persons, which the zone hides with the very same predicate.
+    if (!g_relay_running.load()) {
+        if (const auto me = my_position()) {
+            std::vector<uint32_t> learnt;
+            {
+                std::lock_guard lock(g_mutex);
+                learnt = g_learnt_factions;
+            }
+            zone_reject_log(kGuestReportRadius, *me, {false, learnt}, GetTickCount64());
+        }
+    }
     load_waiting();
     enemy_kept_corpses_tick();
     const uint64_t t = now_ms();

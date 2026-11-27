@@ -156,8 +156,10 @@ inline constexpr size_t kDockingAckSize = 17;
 // source key is +0x41 [0x49]). The stagger relay only uses 77-byte templates,
 // so it stays off on this build until a capture shows the new offsets.
 inline constexpr size_t kAarSize = 69;
+inline constexpr size_t kAarSource = 0x41;  // [0x49] u32 source key (troc_layout: 3C..40 u8 x5, then 41:4)
 // The shape every layout above must keep (a wrong port fails to build).
 static_assert(kMoveHead + 10 * 28 == kMoveReqSize, "Move = head + 10 x 28 history");
+static_assert(kAarSource + 4 == kAarSize, "ApplyActionRestriction source key ends the message");
 static_assert(kMoveTs + 8 <= kMoveAckSplit && kMoveAckSplit < kMoveHead, "Move ts before the Ack's extra byte");
 static_assert(kMoveParent + 8 <= 0x4C && kMoveWorld + kMoveWorldLen <= kMoveTs, "Move parent / Path.world");
 static_assert(kActionForce == kActionSize - 1, "StartAction force flag is the Req's last byte");

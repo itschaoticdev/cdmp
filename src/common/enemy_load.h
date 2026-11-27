@@ -69,6 +69,8 @@ struct Origin {
     uint32_t sub = 0;  // element id, sequence id or camp slot
 };
 Origin origin(std::span<const uint8_t> load);
+// Offset of T0 in the load (the origin fields are relative to it), if found.
+std::optional<size_t> t0_offset(std::span<const uint8_t> load);
 
 // Horizontal distance (the zone is a disk: x, z).
 float flat_distance(const proto::Vec3& a, const proto::Vec3& b);

@@ -129,6 +129,8 @@ std::optional<Tail> parse_tail_at(std::span<const uint8_t> pl) {
     return std::nullopt;
 }
 
+std::optional<size_t> t0_offset(std::span<const uint8_t> load) { return find_t0(load); }
+
 Origin origin(std::span<const uint8_t> load) {
     const auto t0 = find_t0(load);
     if (!t0) return {};
